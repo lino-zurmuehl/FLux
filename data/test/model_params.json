@@ -1,0 +1,26 @@
+{
+  "trained_at": "2026-01-29T21:06:17.481141",
+  "cycles_trained": 12,
+  "model_type": "weighted_average",
+  "prediction": {
+    "next_period_date": "2024-12-12",
+    "confidence": 0.9,
+    "expected_cycle_length": 28,
+    "fertile_window_start": "2024-11-23",
+    "fertile_window_end": "2024-11-28",
+    "period_length": null
+  },
+  "avg_cycle_length": 28.545454545454547,
+  "std_cycle_length": 0.49792959773196915,
+  "avg_period_length": null,
+  "recent_cycle_lengths": [
+    29,
+    28,
+    29,
+    29,
+    29,
+    28
+  ],
+  "trend": 0.16666666666666785,
+  "seasonality": null
+}

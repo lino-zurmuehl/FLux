@@ -1,0 +1,23 @@
+{
+  "periods": [
+    {"start_date": "2024-01-05", "end_date": "2024-01-10"},
+    {"start_date": "2024-02-02", "end_date": "2024-02-07"},
+    {"start_date": "2024-03-01", "end_date": "2024-03-05"},
+    {"start_date": "2024-03-29", "end_date": "2024-04-03"},
+    {"start_date": "2024-04-27", "end_date": "2024-05-01"},
+    {"start_date": "2024-05-26", "end_date": "2024-05-30"},
+    {"start_date": "2024-06-24", "end_date": "2024-06-28"},
+    {"start_date": "2024-07-22", "end_date": "2024-07-26"},
+    {"start_date": "2024-08-20", "end_date": "2024-08-24"},
+    {"start_date": "2024-09-18", "end_date": "2024-09-22"},
+    {"start_date": "2024-10-17", "end_date": "2024-10-21"},
+    {"start_date": "2024-11-14", "end_date": "2024-11-18"}
+  ],
+  "symptoms": [
+    {"date": "2024-01-04", "symptom": "cramps"},
+    {"date": "2024-01-05", "symptom": "cramps"},
+    {"date": "2024-01-05", "symptom": "headache"},
+    {"date": "2024-02-01", "symptom": "bloating"},
+    {"date": "2024-02-02", "symptom": "cramps"}
+  ]
+}
