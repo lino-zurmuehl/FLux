@@ -3,15 +3,17 @@
  */
 
 import { useState } from 'react';
-import { Download, Trash2, Shield, Info, ExternalLink } from 'lucide-react';
+import { Download, Trash2, Shield, Info, ExternalLink, LogOut } from 'lucide-react';
 import { exportData, deleteAllData } from '../lib/db';
 import { useApp } from '../contexts/AppContext';
+import { useAuth } from '../contexts/AuthContext';
 
 export function Settings() {
   const [isExporting, setIsExporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { refreshData, modelParams } = useApp();
+  const { logout } = useAuth();
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -57,6 +59,22 @@ export function Settings() {
         <h1 className="text-2xl font-bold text-primary-800">Einstellungen</h1>
         <p className="text-sm text-gray-500">Verwalte deine Daten und Privatsphäre</p>
       </header>
+
+      {/* App sperren */}
+      <div className="card mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <LogOut className="w-6 h-6 text-gray-600" />
+            <div>
+              <h3 className="font-medium">App sperren</h3>
+              <p className="text-sm text-gray-500">Sperrt die App bis zur erneuten PIN-Eingabe</p>
+            </div>
+          </div>
+          <button onClick={logout} className="btn btn-secondary">
+            Sperren
+          </button>
+        </div>
+      </div>
 
       {/* Datenschutz-Info */}
       <div className="card mb-4 bg-sky-50 border-sky-200">
