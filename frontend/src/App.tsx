@@ -9,7 +9,7 @@ import { Settings } from './pages/Settings';
 function App() {
   return (
     <AppProvider>
-      <BrowserRouter>
+      <BrowserRouter basename="/FLux">
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
