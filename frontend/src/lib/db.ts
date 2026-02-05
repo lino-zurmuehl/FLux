@@ -174,6 +174,37 @@ export async function hasData(): Promise<boolean> {
 }
 
 /**
+ * Update prediction when a new period starts.
+ * Recalculates nextPeriodDate based on avgCycleLength.
+ */
+export async function updatePredictionForNewCycle(cycleStartDate: string): Promise<void> {
+  const modelParams = await getModelParams();
+  if (!modelParams?.prediction) return;
+
+  const startDate = new Date(cycleStartDate);
+  const nextPeriodDate = new Date(startDate);
+  nextPeriodDate.setDate(nextPeriodDate.getDate() + Math.round(modelParams.avgCycleLength));
+
+  // Update fertile window (typically day 10-16 of cycle)
+  const fertileStart = new Date(startDate);
+  fertileStart.setDate(fertileStart.getDate() + 10);
+  const fertileEnd = new Date(startDate);
+  fertileEnd.setDate(fertileEnd.getDate() + 16);
+
+  const updatedParams: ModelParams = {
+    ...modelParams,
+    prediction: {
+      ...modelParams.prediction,
+      nextPeriodDate: nextPeriodDate.toISOString().split('T')[0],
+      fertileWindowStart: fertileStart.toISOString().split('T')[0],
+      fertileWindowEnd: fertileEnd.toISOString().split('T')[0],
+    },
+  };
+
+  await saveModelParams(updatedParams);
+}
+
+/**
  * Get current cycle day (days since last period started).
  */
 export async function getCurrentCycleDay(): Promise<number | null> {

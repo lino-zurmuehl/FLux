@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Droplet, Plus } from 'lucide-react';
 import { format } from 'date-fns';
-import { addCycle } from '../lib/db';
+import { addCycle, updatePredictionForNewCycle } from '../lib/db';
 import { useApp } from '../contexts/AppContext';
 
 export function QuickLog() {
@@ -19,6 +19,7 @@ export function QuickLog() {
     try {
       const today = format(new Date(), 'yyyy-MM-dd');
       await addCycle({ startDate: today });
+      await updatePredictionForNewCycle(today);
       await refreshData();
     } catch (error) {
       console.error('Fehler beim Erfassen:', error);
