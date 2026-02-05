@@ -6,27 +6,46 @@ interface Props {
   currentDay: number;
   cycleLength: number;
   periodLength: number;
+  fertileStart?: number; // Day of cycle
+  fertileEnd?: number; // Day of cycle
 }
 
-export function CycleProgress({ currentDay, cycleLength, periodLength }: Props) {
+export function CycleProgress({
+  currentDay,
+  cycleLength,
+  periodLength,
+  fertileStart,
+  fertileEnd,
+}: Props) {
   const size = 200;
   const strokeWidth = 20;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const center = size / 2;
 
-  // Calculate percentages
-  const periodPercent = periodLength / cycleLength;
-  const fertileStartDay = Math.round((10 / 28) * cycleLength);
-  const fertileEndDay = Math.round((16 / 28) * cycleLength);
-  const fertileStartPercent = fertileStartDay / cycleLength;
+  // Calculate day ranges
+  // Fertile window: typically around ovulation (day 14 in a 28-day cycle)
+  // Default: 5 days before ovulation to 1 day after
+  const ovulationDay = Math.round(cycleLength - 14); // ~14 days before next period
+  const fertileStartDay = fertileStart ?? Math.max(periodLength + 1, ovulationDay - 5);
+  const fertileEndDay = fertileEnd ?? ovulationDay + 1;
+
+  // Convert days to percentages (0-1)
+  const periodEndPercent = periodLength / cycleLength;
+  const fertileStartPercent = (fertileStartDay - 1) / cycleLength;
   const fertileEndPercent = fertileEndDay / cycleLength;
   const currentPercent = Math.min(currentDay / cycleLength, 1);
 
-  // Convert to stroke dasharray/dashoffset (starting from top, going clockwise)
-  const periodDash = circumference * periodPercent;
+  // SVG dash calculations
+  // Period: starts at 0 (top of circle after rotation)
+  const periodDash = circumference * periodEndPercent;
+
+  // Fertile window: starts at fertileStartPercent
   const fertileDash = circumference * (fertileEndPercent - fertileStartPercent);
-  const fertileOffset = circumference * (1 - fertileStartPercent) + circumference * 0.25;
+  // Negative offset moves dash forward (clockwise after rotation)
+  const fertileOffset = -circumference * fertileStartPercent;
+
+  // Progress arc
   const progressDash = circumference * currentPercent;
 
   // Calculate marker position (angle from top, clockwise)
@@ -65,7 +84,7 @@ export function CycleProgress({ currentDay, cycleLength, periodLength }: Props) 
               strokeWidth={strokeWidth}
             />
 
-            {/* Period phase */}
+            {/* Period phase (starts at top) */}
             <circle
               cx={center}
               cy={center}
@@ -77,7 +96,7 @@ export function CycleProgress({ currentDay, cycleLength, periodLength }: Props) 
               strokeLinecap="round"
             />
 
-            {/* Fertile window */}
+            {/* Fertile window (offset to correct position) */}
             <circle
               cx={center}
               cy={center}
@@ -87,16 +106,17 @@ export function CycleProgress({ currentDay, cycleLength, periodLength }: Props) 
               strokeWidth={strokeWidth}
               strokeDasharray={`${fertileDash} ${circumference - fertileDash}`}
               strokeDashoffset={fertileOffset}
+              strokeLinecap="round"
             />
 
-            {/* Progress arc */}
+            {/* Progress arc (inner, shows current position) */}
             <circle
               cx={center}
               cy={center}
               r={radius}
               fill="none"
               stroke="#be123c"
-              strokeWidth={strokeWidth - 8}
+              strokeWidth={strokeWidth - 10}
               strokeDasharray={`${progressDash} ${circumference - progressDash}`}
               strokeLinecap="round"
               className="transition-all duration-500"
@@ -105,10 +125,11 @@ export function CycleProgress({ currentDay, cycleLength, periodLength }: Props) 
 
           {/* Current day marker */}
           <div
-            className="absolute w-6 h-6 bg-white border-4 border-primary-700 rounded-full shadow-lg transition-all duration-500"
+            className="absolute w-5 h-5 bg-white border-3 border-primary-700 rounded-full shadow-lg transition-all duration-500"
             style={{
-              left: markerX - 12,
-              top: markerY - 12,
+              left: markerX - 10,
+              top: markerY - 10,
+              borderWidth: '3px',
             }}
           />
 
@@ -125,11 +146,11 @@ export function CycleProgress({ currentDay, cycleLength, periodLength }: Props) 
       <div className="flex justify-center gap-6 mt-4 text-xs">
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 bg-primary-200 rounded-full" />
-          <span className="text-gray-600">Periode</span>
+          <span className="text-gray-600">Periode ({periodLength}T)</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 bg-sky-300 rounded-full" />
-          <span className="text-gray-600">Fruchtbar</span>
+          <span className="text-gray-600">Fruchtbar (T{fertileStartDay}-{fertileEndDay})</span>
         </div>
       </div>
     </div>
