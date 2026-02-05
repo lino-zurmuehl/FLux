@@ -41,31 +41,77 @@ export function Import() {
   const { refreshData } = useApp();
   const navigate = useNavigate();
 
+  // Parse verschiedene Datumsformate (Flo GDPR: "2018-10-22 00:00:00.0")
+  const parseDate = (dateVal: unknown): string | undefined => {
+    if (!dateVal) return undefined;
+    const dateStr = String(dateVal);
+    // Extrahiere nur den Datumsteil (YYYY-MM-DD)
+    const match = dateStr.match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : dateStr.split('T')[0];
+  };
+
   const parseFloExport = (data: Record<string, unknown>): ParsedFloData => {
     const cycles: Cycle[] = [];
     const logs: DailyLog[] = [];
 
-    // Versuche Periodendaten in verschiedenen Strukturen zu finden
-    const periodData =
-      (data.periods as Array<Record<string, unknown>>) ??
-      (data.menstrual_cycles as Array<Record<string, unknown>>) ??
-      (data.cycles as Array<Record<string, unknown>>) ??
-      ((data.data as Record<string, unknown>)?.periods as Array<Record<string, unknown>>);
+    // Finde Periodendaten in verschiedenen möglichen Strukturen
+    let periodData: Array<Record<string, unknown>> | undefined;
+
+    // Struktur 1: Flo GDPR Export - operationalData.cycles
+    const opData = data.operationalData as Record<string, unknown> | undefined;
+    if (opData && Array.isArray(opData.cycles)) {
+      periodData = opData.cycles as Array<Record<string, unknown>>;
+    }
+
+    // Struktur 2: Direkte Arrays
+    if (!periodData) {
+      periodData =
+        (data.periods as Array<Record<string, unknown>>) ??
+        (data.menstrual_cycles as Array<Record<string, unknown>>) ??
+        (data.cycles as Array<Record<string, unknown>>) ??
+        (data.cycle_data as Array<Record<string, unknown>>);
+    }
+
+    // Struktur 3: Unter "data" verschachtelt
+    if (!periodData && data.data) {
+      const nestedData = data.data as Record<string, unknown>;
+      periodData =
+        (nestedData.periods as Array<Record<string, unknown>>) ??
+        (nestedData.cycles as Array<Record<string, unknown>>);
+    }
 
     if (periodData && Array.isArray(periodData)) {
       for (const period of periodData) {
-        const startDate =
-          (period.start_date as string) ??
-          (period.startDate as string) ??
-          (period.start as string) ??
-          (period.date as string);
+        // Flo GDPR Format: period_start_date, period_end_date
+        const startDate = parseDate(
+          period.period_start_date ??
+          period.start_date ??
+          period.startDate ??
+          period.start ??
+          period.date
+        );
 
         if (startDate) {
+          const endDate = parseDate(
+            period.period_end_date ??
+            period.end_date ??
+            period.endDate ??
+            period.end
+          );
+
+          const cycleLength =
+            (period.cycle_length as number) ??
+            (period.cycleLength as number);
+
+          const periodLength =
+            (period.period_length as number) ??
+            (period.periodLength as number);
+
           cycles.push({
-            startDate: startDate.split('T')[0],
-            endDate: ((period.end_date as string) ?? (period.endDate as string))?.split('T')[0],
-            length: (period.cycle_length as number) ?? (period.cycleLength as number),
-            periodLength: (period.period_length as number) ?? (period.periodLength as number),
+            startDate,
+            endDate,
+            length: cycleLength,
+            periodLength,
           });
         }
       }
@@ -82,6 +128,17 @@ export function Import() {
         cycles[i].length = Math.round(
           (next.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
         );
+      }
+    }
+
+    // Periodenlängen berechnen aus Start/End falls vorhanden
+    for (const cycle of cycles) {
+      if (!cycle.periodLength && cycle.endDate) {
+        const start = new Date(cycle.startDate);
+        const end = new Date(cycle.endDate);
+        cycle.periodLength = Math.round(
+          (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+        ) + 1;
       }
     }
 
