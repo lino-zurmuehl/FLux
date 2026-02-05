@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Droplet, DropletOff, Plus } from 'lucide-react';
+import { Droplet, CircleCheck, Plus } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { addCycle, updateCycle, updatePredictionForNewCycle } from '../lib/db';
 import { useApp } from '../contexts/AppContext';
@@ -69,7 +69,7 @@ export function QuickLog() {
             disabled={isLogging}
             className="flex-1 btn bg-sky-100 text-sky-700 hover:bg-sky-200 flex items-center justify-center gap-2"
           >
-            <DropletOff className="w-5 h-5" />
+            <CircleCheck className="w-5 h-5" />
             <span>{isLogging ? 'Erfasse...' : 'Periode beendet'}</span>
           </button>
         ) : (
