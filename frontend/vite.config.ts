@@ -3,18 +3,21 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  base: '/FLux/',
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
-        name: 'FLux - Period Tracker',
+        name: 'FLux - Periodentracker',
         short_name: 'FLux',
-        description: 'Privacy-focused period tracking with ML predictions',
-        theme_color: '#ec4899',
-        background_color: '#ffffff',
+        description: 'Datenschutzfreundliches Periodentracking mit ML-Vorhersagen',
+        theme_color: '#881337',
+        background_color: '#f0f9ff',
         display: 'standalone',
+        start_url: '/FLux/',
+        scope: '/FLux/',
         icons: [
           {
             src: 'pwa-192x192.png',
