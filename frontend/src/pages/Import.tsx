@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Upload, FileJson, Check, AlertCircle } from 'lucide-react';
 import { importCycles, importLogs, saveModelParams } from '../lib/db';
 import { useApp } from '../contexts/AppContext';
-import type { Cycle, DailyLog, ModelParams } from '../lib/types';
+import type { Cycle, DailyLog, FlowIntensity, ModelParams } from '../lib/types';
 
 type ImportType = 'flo' | 'model' | 'backup';
 
@@ -15,6 +15,13 @@ interface ParsedFloData {
   cycles: Cycle[];
   logs: DailyLog[];
 }
+
+const FLO_FLOW_MAP: Record<number, FlowIntensity> = {
+  0: 'spotting',
+  1: 'light',
+  2: 'medium',
+  3: 'heavy',
+};
 
 // Konvertiert snake_case zu camelCase (Python -> JS Kompatibilität)
 function snakeToCamel(obj: Record<string, unknown>): Record<string, unknown> {
@@ -142,6 +149,84 @@ export function Import() {
       }
     }
 
+    // Flo-Tageslogs aus operationalData.point_events_manual_v2 zusammenführen
+    const pointEvents = (opData?.point_events_manual_v2 as Array<Record<string, unknown>> | undefined) ?? [];
+    if (Array.isArray(pointEvents) && pointEvents.length > 0) {
+      const logsByDate = new Map<string, DailyLog>();
+
+      for (const event of pointEvents) {
+        const eventDate = parseDate(event.date);
+        if (!eventDate) continue;
+
+        const existing = logsByDate.get(eventDate) ?? {
+          date: eventDate,
+          symptoms: [],
+          disturbers: [],
+        };
+
+        const category = String(event.category ?? '');
+        const subcategory = String(event.subcategory ?? '');
+
+        if (category === 'Period') {
+          const flowNum = Number(event.value);
+          if (!Number.isNaN(flowNum) && flowNum in FLO_FLOW_MAP) {
+            existing.flow = FLO_FLOW_MAP[flowNum as keyof typeof FLO_FLOW_MAP];
+          }
+          existing.isPeriod = true;
+        } else if (category === 'Symptom' && subcategory) {
+          const symptom = subcategory as DailyLog['symptoms'][number];
+          if (!existing.symptoms.includes(symptom)) {
+            existing.symptoms.push(symptom);
+          }
+        } else if (category === 'Mood' && subcategory) {
+          existing.mood = subcategory as DailyLog['mood'];
+        } else if (category === 'Fluid' && subcategory) {
+          existing.fluid = subcategory as DailyLog['fluid'];
+        } else if (category === 'Disturber' && subcategory) {
+          if (!existing.disturbers.includes(subcategory as DailyLog['disturbers'][number])) {
+            existing.disturbers.push(subcategory as DailyLog['disturbers'][number]);
+          }
+        } else if (category === 'SexDrive' && subcategory) {
+          existing.sexDrive = subcategory as DailyLog['sexDrive'];
+        } else if (category === 'Bbt') {
+          const temp = Number(event.value);
+          if (!Number.isNaN(temp)) {
+            existing.temperature = temp;
+          }
+        }
+
+        logsByDate.set(eventDate, existing);
+      }
+
+      logs.push(...Array.from(logsByDate.values()).sort((a, b) => a.date.localeCompare(b.date)));
+    }
+
+    // Fallback für Exporte mit bereits strukturierten Tageslogs
+    const directLogs =
+      (data.daily_logs as Array<Record<string, unknown>> | undefined) ??
+      (data.logs as Array<Record<string, unknown>> | undefined) ??
+      ((data.data as Record<string, unknown> | undefined)?.daily_logs as Array<Record<string, unknown>> | undefined) ??
+      ((data.data as Record<string, unknown> | undefined)?.logs as Array<Record<string, unknown>> | undefined);
+
+    if (logs.length === 0 && Array.isArray(directLogs)) {
+      for (const entry of directLogs) {
+        const logDate = parseDate(entry.date ?? entry.log_date);
+        if (!logDate) continue;
+        logs.push({
+          date: logDate,
+          flow: entry.flow as DailyLog['flow'],
+          symptoms: (entry.symptoms as DailyLog['symptoms']) ?? [],
+          mood: entry.mood as DailyLog['mood'],
+          fluid: entry.fluid as DailyLog['fluid'],
+          sexDrive: entry.sex_drive as DailyLog['sexDrive'],
+          disturbers: (entry.disturbers as DailyLog['disturbers']) ?? [],
+          temperature: typeof entry.temperature === 'number' ? entry.temperature : undefined,
+          notes: typeof entry.notes === 'string' ? entry.notes : undefined,
+          isPeriod: Boolean(entry.is_period ?? entry.flow),
+        });
+      }
+    }
+
     return { cycles, logs };
   };
 
@@ -183,17 +268,20 @@ export function Import() {
         });
       } else if (importType === 'backup') {
         // App-Backup importieren
-        const backup = data as { cycles: Cycle[]; logs: DailyLog[] };
+        const backup = data as { cycles: Cycle[]; logs: DailyLog[]; modelParams?: ModelParams | null };
         if (backup.cycles) {
           await importCycles(backup.cycles);
         }
         if (backup.logs) {
           await importLogs(backup.logs);
         }
+        if (backup.modelParams) {
+          await saveModelParams(backup.modelParams);
+        }
         await refreshData();
         setResult({
           success: true,
-          message: `Backup wiederhergestellt: ${backup.cycles?.length ?? 0} Zyklen, ${backup.logs?.length ?? 0} Einträge.`,
+          message: `Backup wiederhergestellt: ${backup.cycles?.length ?? 0} Zyklen, ${backup.logs?.length ?? 0} Einträge${backup.modelParams ? ', Modellparameter' : ''}.`,
         });
       }
     } catch (error) {

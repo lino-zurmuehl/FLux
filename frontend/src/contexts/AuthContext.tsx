@@ -18,6 +18,7 @@ interface AuthState {
   login: (pin: string) => Promise<boolean>;
   setupPIN: (pin: string) => Promise<void>;
   logout: () => void;
+  refreshAuthStatus: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -72,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         setupPIN,
         logout,
+        refreshAuthStatus: checkAuthStatus,
       }}
     >
       {children}

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, UploadFile, File, Depends
 from typing import Optional
 
-from backend.models.schemas import CycleData, PredictionResponse
+from backend.api.schemas import CycleData, PredictionResponse
 from backend.services.encryption import EncryptionService
 from backend.services.prediction import PredictionService
 

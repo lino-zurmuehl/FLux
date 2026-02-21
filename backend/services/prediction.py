@@ -3,7 +3,7 @@
 from datetime import date, timedelta
 from typing import Optional
 
-from backend.models.schemas import CycleData, PredictionResponse
+from backend.api.schemas import CycleData, PredictionResponse
 
 
 class PredictionService:

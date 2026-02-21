@@ -8,6 +8,18 @@
 import Dexie, { type Table } from 'dexie';
 import type { Cycle, DailyLog, ModelParams, AppSettings } from './types';
 
+function parseISODateLocal(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1, 12, 0, 0, 0);
+}
+
+function formatISODateLocal(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 /**
  * Database schema for FLux app.
  */
@@ -67,6 +79,13 @@ export async function updateCycle(
 }
 
 /**
+ * Delete a cycle by id.
+ */
+export async function deleteCycle(id: number): Promise<void> {
+  await db.cycles.delete(id);
+}
+
+/**
  * Get all cycles sorted by date.
  */
 export async function getAllCycles(): Promise<Cycle[]> {
@@ -78,6 +97,13 @@ export async function getAllCycles(): Promise<Cycle[]> {
  */
 export async function getLatestCycle(): Promise<Cycle | undefined> {
   return await db.cycles.orderBy('startDate').last();
+}
+
+/**
+ * Get cycle by exact start date.
+ */
+export async function getCycleByStartDate(startDate: string): Promise<Cycle | undefined> {
+  return await db.cycles.where('startDate').equals(startDate).first();
 }
 
 /**
@@ -136,14 +162,17 @@ export async function exportData(): Promise<{
   exportedAt: string;
   cycles: Cycle[];
   logs: DailyLog[];
+  modelParams: ModelParams | null;
 }> {
   const cycles = await getAllCycles();
   const logs = await getAllLogs();
+  const modelParams = await getModelParams();
 
   return {
     exportedAt: new Date().toISOString(),
     cycles,
     logs,
+    modelParams,
   };
 }
 
@@ -181,7 +210,7 @@ export async function updatePredictionForNewCycle(cycleStartDate: string): Promi
   const modelParams = await getModelParams();
   if (!modelParams?.prediction) return;
 
-  const startDate = new Date(cycleStartDate);
+  const startDate = parseISODateLocal(cycleStartDate);
   const nextPeriodDate = new Date(startDate);
   nextPeriodDate.setDate(nextPeriodDate.getDate() + Math.round(modelParams.avgCycleLength));
 
@@ -195,9 +224,9 @@ export async function updatePredictionForNewCycle(cycleStartDate: string): Promi
     ...modelParams,
     prediction: {
       ...modelParams.prediction,
-      nextPeriodDate: nextPeriodDate.toISOString().split('T')[0],
-      fertileWindowStart: fertileStart.toISOString().split('T')[0],
-      fertileWindowEnd: fertileEnd.toISOString().split('T')[0],
+      nextPeriodDate: formatISODateLocal(nextPeriodDate),
+      fertileWindowStart: formatISODateLocal(fertileStart),
+      fertileWindowEnd: formatISODateLocal(fertileEnd),
     },
   };
 
@@ -212,7 +241,8 @@ export async function getCurrentCycleDay(): Promise<number | null> {
 
   if (latestCycle) {
     const today = new Date();
-    const startDate = new Date(latestCycle.startDate);
+    today.setHours(12, 0, 0, 0);
+    const startDate = parseISODateLocal(latestCycle.startDate);
     const diffTime = today.getTime() - startDate.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     return diffDays + 1; // Day 1 is the first day of period
@@ -222,11 +252,14 @@ export async function getCurrentCycleDay(): Promise<number | null> {
   const modelParams = await getModelParams();
   if (modelParams?.prediction) {
     const today = new Date();
-    const nextPeriod = new Date(modelParams.prediction.nextPeriodDate);
+    today.setHours(12, 0, 0, 0);
+    const nextPeriod = parseISODateLocal(modelParams.prediction.nextPeriodDate);
     const diffTime = nextPeriod.getTime() - today.getTime();
     const daysUntilPeriod = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    const cycleDay = modelParams.prediction.expectedCycleLength - daysUntilPeriod;
-    return Math.max(1, cycleDay); // At least day 1
+    const cycleLength = Math.max(1, Math.round(modelParams.prediction.expectedCycleLength));
+    const rawCycleDay = cycleLength - daysUntilPeriod;
+    // Keep cycle day in a realistic 1..cycleLength range even if prediction date is stale.
+    return ((rawCycleDay - 1) % cycleLength + cycleLength) % cycleLength + 1;
   }
 
   return null;

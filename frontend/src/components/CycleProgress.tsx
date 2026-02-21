@@ -17,6 +17,12 @@ export function CycleProgress({
   fertileStart,
   fertileEnd,
 }: Props) {
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+  const safeCycleLength = Math.max(1, Math.round(cycleLength));
+  const safePeriodLength = clamp(Math.round(periodLength), 1, safeCycleLength);
+  const safeCurrentDay = Math.max(1, Math.round(currentDay));
+  const isOverdue = safeCurrentDay > safeCycleLength;
+
   const size = 200;
   const strokeWidth = 20;
   const radius = (size - strokeWidth) / 2;
@@ -26,15 +32,22 @@ export function CycleProgress({
   // Calculate day ranges
   // Fertile window: typically around ovulation (day 14 in a 28-day cycle)
   // Default: 5 days before ovulation to 1 day after
-  const ovulationDay = Math.round(cycleLength - 14); // ~14 days before next period
-  const fertileStartDay = fertileStart ?? Math.max(periodLength + 1, ovulationDay - 5);
-  const fertileEndDay = fertileEnd ?? ovulationDay + 1;
+  const ovulationDay = clamp(Math.round(safeCycleLength - 14), 1, safeCycleLength); // ~14 days before next period
+  const defaultFertileStart = clamp(Math.max(safePeriodLength + 1, ovulationDay - 5), 1, safeCycleLength);
+  const defaultFertileEnd = clamp(Math.max(defaultFertileStart, ovulationDay + 1), defaultFertileStart, safeCycleLength);
+
+  const fertileStartDay = fertileStart
+    ? clamp(Math.round(fertileStart), 1, safeCycleLength)
+    : defaultFertileStart;
+  const fertileEndDay = fertileEnd
+    ? clamp(Math.round(fertileEnd), fertileStartDay, safeCycleLength)
+    : defaultFertileEnd;
 
   // Convert days to percentages (0-1)
-  const periodEndPercent = periodLength / cycleLength;
-  const fertileStartPercent = (fertileStartDay - 1) / cycleLength;
-  const fertileEndPercent = fertileEndDay / cycleLength;
-  const currentPercent = Math.min(currentDay / cycleLength, 1);
+  const periodEndPercent = safePeriodLength / safeCycleLength;
+  const fertileStartPercent = (fertileStartDay - 1) / safeCycleLength;
+  const fertileEndPercent = fertileEndDay / safeCycleLength;
+  const currentPercent = Math.min(safeCurrentDay / safeCycleLength, 1);
 
   // SVG dash calculations
   // Period: starts at 0 (top of circle after rotation)
@@ -56,13 +69,16 @@ export function CycleProgress({
   // Determine current phase
   let phase = 'Follikelphase';
   let phaseColor = 'text-gray-600';
-  if (currentDay <= periodLength) {
+  if (isOverdue) {
+    phase = 'Überfällig';
+    phaseColor = 'text-red-600';
+  } else if (safeCurrentDay <= safePeriodLength) {
     phase = 'Periode';
     phaseColor = 'text-primary-600';
-  } else if (currentDay >= fertileStartDay && currentDay <= fertileEndDay) {
+  } else if (safeCurrentDay >= fertileStartDay && safeCurrentDay <= fertileEndDay) {
     phase = 'Fruchtbar';
     phaseColor = 'text-sky-600';
-  } else if (currentDay > fertileEndDay) {
+  } else if (safeCurrentDay > fertileEndDay) {
     phase = 'Lutealphase';
     phaseColor = 'text-gray-600';
   }
@@ -135,8 +151,15 @@ export function CycleProgress({
 
           {/* Center text */}
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-4xl font-bold text-primary-700">{currentDay}</span>
-            <span className="text-sm text-gray-500">von {cycleLength}</span>
+            <span className="text-4xl font-bold text-primary-700">
+              {isOverdue ? safeCycleLength : safeCurrentDay}
+            </span>
+            <span className="text-sm text-gray-500">von {safeCycleLength}</span>
+            {isOverdue && (
+              <span className="text-xs font-medium text-red-600">
+                +{safeCurrentDay - safeCycleLength} Tage
+              </span>
+            )}
             <span className={`text-xs font-medium mt-1 ${phaseColor}`}>{phase}</span>
           </div>
         </div>
@@ -146,7 +169,7 @@ export function CycleProgress({
       <div className="flex justify-center gap-6 mt-4 text-xs">
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 bg-primary-200 rounded-full" />
-          <span className="text-gray-600">Periode ({periodLength}T)</span>
+          <span className="text-gray-600">Periode ({safePeriodLength}T)</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 bg-sky-300 rounded-full" />

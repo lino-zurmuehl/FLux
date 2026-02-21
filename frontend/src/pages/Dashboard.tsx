@@ -3,6 +3,7 @@
  */
 
 import { useNavigate } from 'react-router-dom';
+import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { useApp } from '../contexts/AppContext';
 import { PredictionCard } from '../components/PredictionCard';
 import { CycleProgress } from '../components/CycleProgress';
@@ -10,7 +11,7 @@ import { QuickLog } from '../components/QuickLog';
 import { Upload } from 'lucide-react';
 
 export function Dashboard() {
-  const { isLoading, hasSetup, modelParams, currentCycleDay } = useApp();
+  const { isLoading, hasSetup, modelParams, currentCycleDay, latestCycle } = useApp();
   const navigate = useNavigate();
 
   if (isLoading) {
@@ -54,6 +55,25 @@ export function Dashboard() {
     );
   }
 
+  const fertileWindowDays = (() => {
+    if (!modelParams?.prediction || !latestCycle?.startDate) {
+      return { fertileStartDay: undefined, fertileEndDay: undefined };
+    }
+    const { fertileWindowStart, fertileWindowEnd } = modelParams.prediction;
+    if (!fertileWindowStart || !fertileWindowEnd) {
+      return { fertileStartDay: undefined, fertileEndDay: undefined };
+    }
+
+    const cycleStart = parseISO(latestCycle.startDate);
+    const fertileStartDate = parseISO(fertileWindowStart);
+    const fertileEndDate = parseISO(fertileWindowEnd);
+
+    return {
+      fertileStartDay: differenceInCalendarDays(fertileStartDate, cycleStart) + 1,
+      fertileEndDay: differenceInCalendarDays(fertileEndDate, cycleStart) + 1,
+    };
+  })();
+
   return (
     <div className="p-4 max-w-lg mx-auto">
       {/* Header */}
@@ -74,6 +94,8 @@ export function Dashboard() {
           currentDay={currentCycleDay}
           cycleLength={modelParams.prediction.expectedCycleLength}
           periodLength={modelParams.prediction.periodLength ?? 5}
+          fertileStart={fertileWindowDays.fertileStartDay}
+          fertileEnd={fertileWindowDays.fertileEndDay}
         />
       )}
 

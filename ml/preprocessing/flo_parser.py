@@ -367,8 +367,36 @@ def parse_app_export(file_path: str | Path) -> AppExport:
     with open(file_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
+    def to_snake_case(key: str) -> str:
+        result = []
+        for i, char in enumerate(key):
+            if char.isupper() and i > 0:
+                result.append("_")
+            result.append(char.lower())
+        return "".join(result)
+
+    def normalize_entry(entry: dict) -> dict:
+        normalized: dict = {}
+        for key, value in entry.items():
+            snake_key = to_snake_case(key)
+            if isinstance(value, dict):
+                normalized[snake_key] = normalize_entry(value)
+            elif isinstance(value, list):
+                normalized[snake_key] = [
+                    normalize_entry(item) if isinstance(item, dict) else item
+                    for item in value
+                ]
+            else:
+                normalized[snake_key] = value
+        return normalized
+
+    normalized = normalize_entry(data)
+    exported_at = normalized.get("exported_at")
+    if not isinstance(exported_at, str):
+        raise ValueError("Invalid app export: missing 'exported_at'/'exportedAt'")
+
     return AppExport(
-        exported_at=datetime.fromisoformat(data["exported_at"].replace("Z", "+00:00")),
-        cycles=[Cycle(**c) for c in data.get("cycles", [])],
-        logs=[DailyLog(**l) for l in data.get("logs", [])],
+        exported_at=datetime.fromisoformat(exported_at.replace("Z", "+00:00")),
+        cycles=[Cycle(**c) for c in normalized.get("cycles", [])],
+        logs=[DailyLog(**l) for l in normalized.get("logs", [])],
     )

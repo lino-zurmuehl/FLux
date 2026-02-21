@@ -186,6 +186,7 @@ export interface AppExport {
   exportedAt: string;
   cycles: Cycle[];
   logs: DailyLog[];
+  modelParams?: ModelParams | null;
 }
 
 /**

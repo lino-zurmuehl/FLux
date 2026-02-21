@@ -13,7 +13,7 @@ export function Settings() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { refreshData, modelParams } = useApp();
-  const { logout } = useAuth();
+  const { logout, refreshAuthStatus } = useAuth();
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -43,6 +43,7 @@ export function Settings() {
     try {
       await deleteAllData();
       await refreshData();
+      await refreshAuthStatus();
       setShowDeleteConfirm(false);
       alert('Alle Daten wurden gelöscht.');
     } catch (error) {

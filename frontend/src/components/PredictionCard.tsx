@@ -2,7 +2,7 @@
  * Karte mit dem vorhergesagten nächsten Periodenstart.
  */
 
-import { format, differenceInDays, parseISO } from 'date-fns';
+import { format, differenceInCalendarDays, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Calendar, TrendingUp } from 'lucide-react';
 import type { Prediction } from '../lib/types';
@@ -31,7 +31,9 @@ export function PredictionCard({ prediction, currentCycleDay }: Props) {
 
   const nextDate = parseISO(prediction.nextPeriodDate);
   const today = new Date();
-  const daysUntil = differenceInDays(nextDate, today);
+  today.setHours(12, 0, 0, 0);
+  nextDate.setHours(12, 0, 0, 0);
+  const daysUntil = differenceInCalendarDays(nextDate, today);
   const confidencePercent = Math.round(prediction.confidence * 100);
 
   // Statusnachricht basierend auf Tagen bis zur Periode
@@ -39,7 +41,8 @@ export function PredictionCard({ prediction, currentCycleDay }: Props) {
   let statusColor: string;
 
   if (daysUntil < 0) {
-    statusMessage = `${Math.abs(daysUntil)} Tage überfällig`;
+    const overdueDays = Math.abs(daysUntil);
+    statusMessage = `${overdueDays} ${overdueDays === 1 ? 'Tag' : 'Tage'} überfällig`;
     statusColor = 'text-red-600';
   } else if (daysUntil === 0) {
     statusMessage = 'Heute erwartet';
