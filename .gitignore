@@ -217,3 +217,5 @@ models/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+.DS_Store
+data/.DS_Store
