@@ -86,6 +86,7 @@ export function Dashboard() {
       <PredictionCard
         prediction={modelParams?.prediction ?? null}
         currentCycleDay={currentCycleDay}
+        isPeriodActive={Boolean(latestCycle && !latestCycle.endDate)}
       />
 
       {/* Zyklus-Fortschritt */}

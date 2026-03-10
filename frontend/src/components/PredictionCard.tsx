@@ -10,9 +10,10 @@ import type { Prediction } from '../lib/types';
 interface Props {
   prediction: Prediction | null;
   currentCycleDay: number | null;
+  isPeriodActive?: boolean;
 }
 
-export function PredictionCard({ prediction, currentCycleDay }: Props) {
+export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = false }: Props) {
   if (!prediction) {
     return (
       <div className="card bg-gradient-to-br from-primary-50 to-primary-100 border-primary-200">
@@ -40,7 +41,10 @@ export function PredictionCard({ prediction, currentCycleDay }: Props) {
   let statusMessage: string;
   let statusColor: string;
 
-  if (daysUntil < 0) {
+  if (isPeriodActive && currentCycleDay !== null) {
+    statusMessage = `Tag ${currentCycleDay} der Periode`;
+    statusColor = 'text-primary-700';
+  } else if (daysUntil < 0) {
     const overdueDays = Math.abs(daysUntil);
     statusMessage = `${overdueDays} ${overdueDays === 1 ? 'Tag' : 'Tage'} überfällig`;
     statusColor = 'text-red-600';

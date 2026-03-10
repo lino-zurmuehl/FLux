@@ -3,8 +3,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Droplet, CheckCircle2, Plus, Calendar, X, Pencil } from 'lucide-react';
+import { Droplet, CheckCircle2, Calendar, X, Pencil } from 'lucide-react';
 import { format, differenceInCalendarDays, subDays } from 'date-fns';
 import { de } from 'date-fns/locale';
 import {
@@ -26,7 +25,6 @@ export function QuickLog() {
   const [correctedEndDate, setCorrectedEndDate] = useState('');
   const [isCorrecting, setIsCorrecting] = useState(false);
   const { refreshData, latestCycle } = useApp();
-  const navigate = useNavigate();
 
   // Period is active until the latest cycle gets an end date.
   const isPeriodActive =
@@ -257,13 +255,6 @@ export function QuickLog() {
           <Calendar className="w-5 h-5" />
         </button>
 
-        <button
-          onClick={() => navigate('/log')}
-          className="flex-1 btn btn-secondary flex items-center justify-center gap-2"
-        >
-          <Plus className="w-5 h-5" />
-          <span>Eintrag</span>
-        </button>
       </div>
 
       {/* Date Picker Overlay */}
