@@ -8,9 +8,12 @@ import { format, differenceInCalendarDays, subDays } from 'date-fns';
 import { de } from 'date-fns/locale';
 import {
   addCycle,
+  backupModelParamsBeforePeriodStart,
   deleteCycle,
   getAllCycles,
   getCycleByStartDate,
+  getLatestCycle as getLatestCycleFromDb,
+  restoreModelParamsBackup,
   updateCycle,
   updatePredictionForNewCycle,
 } from '../lib/db';
@@ -58,6 +61,7 @@ export function QuickLog() {
         alert('Für dieses Datum existiert bereits ein Periodenstart.');
         return;
       }
+      await backupModelParamsBeforePeriodStart();
       await addCycle({ startDate: date });
       await updatePredictionForNewCycle(date);
       await refreshData();
@@ -194,12 +198,13 @@ export function QuickLog() {
 
     setIsCorrecting(true);
     try {
-      const allCycles = await getAllCycles();
-      const previousCycleStart = allCycles.length > 1 ? allCycles[allCycles.length - 2].startDate : null;
-
       await deleteCycle(latestCycle.id);
-      if (previousCycleStart) {
-        await updatePredictionForNewCycle(previousCycleStart);
+      const latestRemainingCycle = await getLatestCycleFromDb();
+
+      if (latestRemainingCycle?.startDate) {
+        await updatePredictionForNewCycle(latestRemainingCycle.startDate);
+      } else {
+        await restoreModelParamsBackup();
       }
       await refreshData();
     } catch (error) {

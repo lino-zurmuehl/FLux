@@ -41,13 +41,15 @@ export class FluxDatabase extends Dexie {
 
 // Singleton database instance
 export const db = new FluxDatabase();
+const MODEL_PARAMS_KEY = 'modelParams';
+const MODEL_PARAMS_BACKUP_KEY = 'modelParamsBeforePeriodStart';
 
 /**
  * Store model parameters in settings.
  */
 export async function saveModelParams(params: ModelParams): Promise<void> {
   await db.settings.put({
-    key: 'modelParams',
+    key: MODEL_PARAMS_KEY,
     value: JSON.stringify(params),
   });
 }
@@ -56,9 +58,42 @@ export async function saveModelParams(params: ModelParams): Promise<void> {
  * Get model parameters from settings.
  */
 export async function getModelParams(): Promise<ModelParams | null> {
-  const setting = await db.settings.get('modelParams');
+  const setting = await db.settings.get(MODEL_PARAMS_KEY);
   if (!setting) return null;
   return JSON.parse(setting.value) as ModelParams;
+}
+
+/**
+ * Store current model params so an accidental period start can be undone safely.
+ */
+export async function backupModelParamsBeforePeriodStart(): Promise<void> {
+  const current = await getModelParams();
+  if (!current) return;
+  await db.settings.put({
+    key: MODEL_PARAMS_BACKUP_KEY,
+    value: JSON.stringify(current),
+  });
+}
+
+/**
+ * Restore model params backup created before a period start.
+ */
+export async function restoreModelParamsBackup(): Promise<boolean> {
+  const backup = await db.settings.get(MODEL_PARAMS_BACKUP_KEY);
+  if (!backup) return false;
+  await db.settings.put({
+    key: MODEL_PARAMS_KEY,
+    value: backup.value,
+  });
+  await db.settings.delete(MODEL_PARAMS_BACKUP_KEY);
+  return true;
+}
+
+/**
+ * Clear stale model backup once a period start is confirmed.
+ */
+export async function clearModelParamsBackup(): Promise<void> {
+  await db.settings.delete(MODEL_PARAMS_BACKUP_KEY);
 }
 
 /**

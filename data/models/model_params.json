@@ -1,0 +1,26 @@
+{
+  "trained_at": "2026-03-20T09:17:25.008320",
+  "cycles_trained": 81,
+  "model_type": "weighted_average",
+  "prediction": {
+    "next_period_date": "2026-04-11",
+    "confidence": 0.88,
+    "expected_cycle_length": 33,
+    "fertile_window_start": "2026-03-23",
+    "fertile_window_end": "2026-03-28",
+    "period_length": 6
+  },
+  "avg_cycle_length": 33.13157894736842,
+  "std_cycle_length": 3.6140883150568515,
+  "avg_period_length": 6.395061728395062,
+  "recent_cycle_lengths": [
+    44,
+    33,
+    33,
+    26,
+    29,
+    32
+  ],
+  "trend": -4.301369863013697,
+  "seasonality": null
+}

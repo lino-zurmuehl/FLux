@@ -69,22 +69,25 @@ export function CycleProgress({
   // Determine current phase
   let phase = 'Follikelphase';
   let phaseColor = 'text-gray-600';
+  let cardPhaseClass = 'bg-white border-sky-200';
   if (isOverdue) {
     phase = 'Überfällig';
     phaseColor = 'text-red-600';
   } else if (safeCurrentDay <= safePeriodLength) {
     phase = 'Periode';
     phaseColor = 'text-primary-600';
+    cardPhaseClass = 'bg-gradient-to-br from-primary-100 via-primary-50 to-rose-100 border-primary-300';
   } else if (safeCurrentDay >= fertileStartDay && safeCurrentDay <= fertileEndDay) {
     phase = 'Fruchtbar';
     phaseColor = 'text-sky-600';
+    cardPhaseClass = 'bg-gradient-to-br from-sky-100 via-sky-50 to-cyan-100 border-sky-300';
   } else if (safeCurrentDay > fertileEndDay) {
     phase = 'Lutealphase';
     phaseColor = 'text-gray-600';
   }
 
   return (
-    <div className="card mt-4">
+    <div className={`card mt-4 ${cardPhaseClass}`}>
       <h3 className="font-medium text-gray-700 mb-4 text-center">Zyklusfortschritt</h3>
 
       <div className="flex justify-center">
@@ -106,7 +109,7 @@ export function CycleProgress({
               cy={center}
               r={radius}
               fill="none"
-              stroke="#fecdd3"
+              stroke="#be123c"
               strokeWidth={strokeWidth}
               strokeDasharray={`${periodDash} ${circumference - periodDash}`}
               strokeLinecap="round"

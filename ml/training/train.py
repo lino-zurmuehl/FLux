@@ -102,7 +102,11 @@ def train(
         print(f"\nTraining model (type: {model_type})...")
 
     predictor = CyclePredictor(model_type=model_type)
-    predictor.fit(cycles)
+    try:
+        predictor.fit(cycles)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
 
     # Get prediction
     prediction = predictor.predict()

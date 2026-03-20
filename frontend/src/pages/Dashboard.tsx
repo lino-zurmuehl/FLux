@@ -74,8 +74,23 @@ export function Dashboard() {
     };
   })();
 
+  const isPeriodPhase = Boolean(latestCycle && !latestCycle.endDate);
+  const isFertilePhase = Boolean(
+    currentCycleDay
+    && fertileWindowDays.fertileStartDay
+    && fertileWindowDays.fertileEndDay
+    && currentCycleDay >= fertileWindowDays.fertileStartDay
+    && currentCycleDay <= fertileWindowDays.fertileEndDay
+  );
+
+  const dashboardPhaseBackground = isPeriodPhase
+    ? 'bg-gradient-to-b from-primary-100/70 via-primary-50/80 to-transparent'
+    : isFertilePhase
+      ? 'bg-gradient-to-b from-sky-100/70 via-sky-50/80 to-transparent'
+      : '';
+
   return (
-    <div className="p-4 max-w-lg mx-auto">
+    <div className={`p-4 max-w-lg mx-auto rounded-2xl ${dashboardPhaseBackground}`}>
       {/* Header */}
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-primary-800">FLux</h1>

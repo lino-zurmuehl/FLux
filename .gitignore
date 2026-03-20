@@ -212,7 +212,9 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 *.pkl
-models/
+/models/
+!ml/models/
+!ml/models/*.py
 
 # Frontend
 frontend/node_modules/

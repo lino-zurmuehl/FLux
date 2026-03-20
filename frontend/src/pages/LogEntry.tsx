@@ -6,7 +6,15 @@ import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Check, ChevronLeft, ChevronRight, Droplet, Heart, Thermometer, Brain, AlertCircle } from 'lucide-react';
-import { addCycle, addLog, getCycleByStartDate, getLatestCycle, getLogByDate, updatePredictionForNewCycle } from '../lib/db';
+import {
+  addCycle,
+  addLog,
+  backupModelParamsBeforePeriodStart,
+  getCycleByStartDate,
+  getLatestCycle,
+  getLogByDate,
+  updatePredictionForNewCycle,
+} from '../lib/db';
 import {
   SYMPTOMS,
   SYMPTOM_LABELS,
@@ -126,6 +134,7 @@ export function LogEntry() {
             (latestCycle.endDate && dateString > latestCycle.startDate);
 
           if (shouldStartNewCycle) {
+            await backupModelParamsBeforePeriodStart();
             await addCycle({ startDate: dateString });
             await updatePredictionForNewCycle(dateString);
           }
