@@ -16,7 +16,7 @@ import {
   Thermometer,
   Brain,
   AlertCircle,
-  NotebookPen,
+  FileText,
 } from 'lucide-react';
 import {
   addCycle,
@@ -505,7 +505,7 @@ export function LogEntry() {
 
       {/* Notizen */}
       <Section
-        icon={NotebookPen}
+        icon={FileText}
         iconClass="text-gray-500"
         iconBg="bg-sky-50"
         title="Notizen"
