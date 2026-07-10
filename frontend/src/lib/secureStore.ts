@@ -32,6 +32,7 @@ export interface Dataset {
   modelParams: ModelParams | null;
   modelParamsBackup: ModelParams | null;
   predictionHistory: PredictionRecord[];
+  autoRetrain: boolean;
   nextCycleId: number;
   nextLogId: number;
 }
@@ -83,6 +84,7 @@ function emptyDataset(): Dataset {
     modelParams: null,
     modelParamsBackup: null,
     predictionHistory: [],
+    autoRetrain: true,
     nextCycleId: 1,
     nextLogId: 1,
   };
@@ -115,6 +117,7 @@ async function readLegacyDataset(): Promise<Dataset> {
     modelParams: modelRow ? (JSON.parse(modelRow.value) as ModelParams) : null,
     modelParamsBackup: backupRow ? (JSON.parse(backupRow.value) as ModelParams) : null,
     predictionHistory: [],
+    autoRetrain: true,
     nextCycleId: maxId(cycles) + 1,
     nextLogId: maxId(logs) + 1,
   };
@@ -207,6 +210,7 @@ export async function unlock(pin: string): Promise<boolean> {
       const parsed = JSON.parse(plaintext) as Dataset;
       // Datasets written by older app versions lack newer fields.
       if (!Array.isArray(parsed.predictionHistory)) parsed.predictionHistory = [];
+      if (typeof parsed.autoRetrain !== 'boolean') parsed.autoRetrain = true;
       currentDataset = parsed;
       return true;
     } catch {

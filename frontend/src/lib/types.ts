@@ -164,12 +164,25 @@ export interface Prediction {
 }
 
 /**
- * Model parameters imported from Python training.
+ * Supported prediction model types.
+ * prophet: Python pipeline (Mac), weighted_average and trend_regression:
+ * on-device training in the app.
+ */
+export type ModelType = 'prophet' | 'weighted_average' | 'trend_regression';
+
+export const MODEL_TYPE_LABELS: Record<ModelType, string> = {
+  prophet: 'Prophet',
+  weighted_average: 'Gewichteter Durchschnitt',
+  trend_regression: 'Trend-Regression',
+};
+
+/**
+ * Model parameters imported from Python training or on-device training.
  */
 export interface ModelParams {
   trainedAt: string; // ISO datetime
   cyclesTrained: number;
-  modelType: 'prophet' | 'weighted_average';
+  modelType: ModelType;
   prediction: Prediction;
   avgCycleLength: number;
   stdCycleLength: number;

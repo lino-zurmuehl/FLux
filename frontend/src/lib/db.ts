@@ -422,3 +422,17 @@ export async function getPredictionHistory(): Promise<PredictionRecord[]> {
     a.cycleStartDate.localeCompare(b.cycleStartDate)
   );
 }
+
+/**
+ * Whether the on-device model should retrain automatically after
+ * each logged period.
+ */
+export async function getAutoRetrain(): Promise<boolean> {
+  return getDataset().autoRetrain;
+}
+
+export async function setAutoRetrain(enabled: boolean): Promise<void> {
+  const ds = getDataset();
+  ds.autoRetrain = enabled;
+  await persist();
+}

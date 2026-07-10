@@ -17,7 +17,7 @@ import {
   updatePredictionForNewCycle,
   updatePredictionRecordStartDate,
 } from '../lib/db';
-import { startPeriod, endPeriod } from '../lib/periodActions';
+import { startPeriod, endPeriod, maybeAutoRetrain } from '../lib/periodActions';
 import { useApp } from '../contexts/AppContext';
 
 export function QuickLog() {
@@ -93,7 +93,10 @@ export function QuickLog() {
 
       await updateCycle(latestCycle.id, updates);
       await updatePredictionRecordStartDate(oldStartDate, correctedStartDate);
-      await updatePredictionForNewCycle(correctedStartDate);
+      const retrained = await maybeAutoRetrain();
+      if (!retrained) {
+        await updatePredictionForNewCycle(correctedStartDate);
+      }
       await refreshData();
     } catch (error) {
       console.error('Korrektur fehlgeschlagen:', error);
@@ -118,6 +121,7 @@ export function QuickLog() {
         endDate: correctedEndDate,
         periodLength,
       });
+      await maybeAutoRetrain();
       await refreshData();
     } catch (error) {
       console.error('Korrektur fehlgeschlagen:', error);
@@ -135,6 +139,7 @@ export function QuickLog() {
         endDate: undefined,
         periodLength: undefined,
       });
+      await maybeAutoRetrain();
       await refreshData();
     } catch (error) {
       console.error('Rückgängig fehlgeschlagen:', error);
@@ -153,7 +158,10 @@ export function QuickLog() {
       const latestRemainingCycle = await getLatestCycleFromDb();
 
       if (latestRemainingCycle?.startDate) {
-        await updatePredictionForNewCycle(latestRemainingCycle.startDate);
+        const retrained = await maybeAutoRetrain();
+        if (!retrained) {
+          await updatePredictionForNewCycle(latestRemainingCycle.startDate);
+        }
       } else {
         await restoreModelParamsBackup();
       }

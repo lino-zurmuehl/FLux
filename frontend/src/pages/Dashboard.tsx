@@ -7,6 +7,7 @@ import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Upload, CalendarDays } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
+import { MODEL_TYPE_LABELS } from '../lib/types';
 import { PredictionCard } from '../components/PredictionCard';
 import { CycleProgress } from '../components/CycleProgress';
 import { QuickLog } from '../components/QuickLog';
@@ -135,7 +136,7 @@ export function Dashboard() {
               },
               {
                 label: 'Modell',
-                value: modelParams.modelType.replace('_', ' '),
+                value: MODEL_TYPE_LABELS[modelParams.modelType] ?? modelParams.modelType,
               },
             ].map((stat) => (
               <div

@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, FileJson, Check, AlertCircle } from 'lucide-react';
 import { importCycles, importLogs, saveModelParams } from '../lib/db';
+import { retrainFromStoredCycles } from '../lib/trainer';
 import { useApp } from '../contexts/AppContext';
 import type {
   Cycle,
@@ -395,6 +396,11 @@ export function Import() {
         const logResult = logs.length > 0
           ? await importLogs(logs)
           : { added: 0, updated: 0 };
+
+        // Direkt nach dem Import auf dem Gerät trainieren, damit sofort
+        // Vorhersagen da sind (Python/Prophet bleibt optional).
+        const trainedParams = await retrainFromStoredCycles();
+
         await refreshData();
         const cyclePart = cycleResult.updated > 0
           ? `${cycleResult.added} Zyklen neu, ${cycleResult.updated} aktualisiert`
@@ -404,9 +410,12 @@ export function Import() {
             ? ` und ${logResult.added} Einträge neu, ${logResult.updated} aktualisiert`
             : ` und ${logResult.added} Einträge`
           : '';
+        const trainPart = trainedParams
+          ? ' Das Modell wurde direkt auf dem Gerät trainiert, Vorhersagen sind bereit.'
+          : ' Für Vorhersagen werden mindestens 3 Zyklen benötigt.';
         setResult({
           success: true,
-          message: `${cyclePart}${logPart}. Führe jetzt das Python-Training aus, um Vorhersagen zu generieren.`,
+          message: `${cyclePart}${logPart}.${trainPart}`,
         });
       } else if (importType === 'backup') {
         // App-Backup importieren

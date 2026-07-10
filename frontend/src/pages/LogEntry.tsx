@@ -19,15 +19,12 @@ import {
   FileText,
 } from 'lucide-react';
 import {
-  addCycle,
   addLog,
-  backupModelParamsBeforePeriodStart,
   getCycleByStartDate,
   getLatestCycle,
   getLogByDate,
-  recordPredictionOutcome,
-  updatePredictionForNewCycle,
 } from '../lib/db';
+import { applyPeriodStart } from '../lib/periodActions';
 import {
   SYMPTOMS,
   SYMPTOM_LABELS,
@@ -266,10 +263,7 @@ export function LogEntry() {
                 'Abbrechen = nur als Blutung im Tagebuch speichern (z.B. Zwischenblutung).'
             );
             if (confirmed) {
-              await backupModelParamsBeforePeriodStart();
-              await recordPredictionOutcome(dateString);
-              await addCycle({ startDate: dateString });
-              await updatePredictionForNewCycle(dateString);
+              await applyPeriodStart(dateString);
             }
           }
         }

@@ -1,22 +1,54 @@
 /**
  * Gemeinsame Logik zum Starten/Beenden einer Periode.
- * Wird vom Hero-Kreis (Dashboard) und vom Perioden-Editor genutzt.
+ * Wird von Dashboard, Schnellaktionen und Tageseintrag genutzt.
+ *
+ * Nach jedem erfassten Periodenstart/-ende wird das On-Device-Modell
+ * automatisch neu trainiert (sofern aktiviert und genug Daten da sind).
  */
 
 import { differenceInCalendarDays } from 'date-fns';
 import {
   addCycle,
   backupModelParamsBeforePeriodStart,
+  getAutoRetrain,
   getCycleByStartDate,
   recordPredictionOutcome,
   updateCycle,
   updatePredictionForNewCycle,
 } from './db';
+import { retrainFromStoredCycles } from './trainer';
 import type { Cycle } from './types';
 
 export interface ActionResult {
   ok: boolean;
   error?: string;
+}
+
+/**
+ * Trainiert das Modell neu, wenn Auto-Training aktiv ist und genug
+ * Zyklen vorhanden sind. Gibt true zurück, wenn trainiert wurde.
+ */
+export async function maybeAutoRetrain(): Promise<boolean> {
+  const enabled = await getAutoRetrain();
+  if (!enabled) return false;
+  const params = await retrainFromStoredCycles();
+  return params !== null;
+}
+
+/**
+ * Führt einen bestätigten Periodenstart aus (ohne Validierung):
+ * Backup, Genauigkeits-Aufzeichnung, neuer Zyklus, dann Neu-Training
+ * bzw. Verschieben der bestehenden Vorhersage.
+ */
+export async function applyPeriodStart(date: string): Promise<void> {
+  await backupModelParamsBeforePeriodStart();
+  await recordPredictionOutcome(date);
+  await addCycle({ startDate: date });
+
+  const retrained = await maybeAutoRetrain();
+  if (!retrained) {
+    await updatePredictionForNewCycle(date);
+  }
 }
 
 export async function startPeriod(
@@ -35,10 +67,7 @@ export async function startPeriod(
     return { ok: false, error: 'Für dieses Datum existiert bereits ein Periodenstart.' };
   }
 
-  await backupModelParamsBeforePeriodStart();
-  await recordPredictionOutcome(date);
-  await addCycle({ startDate: date });
-  await updatePredictionForNewCycle(date);
+  await applyPeriodStart(date);
   return { ok: true };
 }
 
@@ -57,5 +86,9 @@ export async function endPeriod(
     differenceInCalendarDays(new Date(date), new Date(latestCycle.startDate)) + 1;
 
   await updateCycle(latestCycle.id, { endDate: date, periodLength });
+
+  // Periodenlänge fließt in avgPeriodLength ein
+  await maybeAutoRetrain();
+
   return { ok: true };
 }

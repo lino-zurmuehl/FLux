@@ -2,10 +2,14 @@
  * Einstellungen - Daten exportieren, löschen, App-Info.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Trash2, Shield, Info, ExternalLink, LogOut, Upload } from 'lucide-react';
-import { exportData, deleteAllData } from '../lib/db';
+import { format, parseISO } from 'date-fns';
+import { de } from 'date-fns/locale';
+import { Download, Trash2, Shield, Info, ExternalLink, LogOut, Upload, RefreshCw } from 'lucide-react';
+import { exportData, deleteAllData, getAllCycles, getAutoRetrain, setAutoRetrain } from '../lib/db';
+import { retrainFromStoredCycles, canTrain, MIN_CYCLES_FOR_TRAINING } from '../lib/trainer';
+import { MODEL_TYPE_LABELS } from '../lib/types';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -13,9 +17,56 @@ export function Settings() {
   const [isExporting, setIsExporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [autoRetrainEnabled, setAutoRetrainEnabled] = useState(true);
+  const [isTraining, setIsTraining] = useState(false);
+  const [trainMessage, setTrainMessage] = useState<string | null>(null);
+  const [trainableCycles, setTrainableCycles] = useState(false);
   const { refreshData, modelParams } = useApp();
   const { logout, refreshAuthStatus } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    async function loadTrainingState() {
+      const [enabled, cycles] = await Promise.all([getAutoRetrain(), getAllCycles()]);
+      setAutoRetrainEnabled(enabled);
+      setTrainableCycles(canTrain(cycles));
+    }
+    loadTrainingState();
+  }, []);
+
+  const handleToggleAutoRetrain = async () => {
+    const next = !autoRetrainEnabled;
+    setAutoRetrainEnabled(next);
+    await setAutoRetrain(next);
+  };
+
+  const handleRetrainNow = async () => {
+    setIsTraining(true);
+    setTrainMessage(null);
+    try {
+      const params = await retrainFromStoredCycles();
+      if (params) {
+        await refreshData();
+        const nextDate = format(parseISO(params.prediction.nextPeriodDate), 'd. MMMM', {
+          locale: de,
+        });
+        setTrainMessage(
+          `Modell aktualisiert mit ${params.cyclesTrained} Zyklen ` +
+            `(${MODEL_TYPE_LABELS[params.modelType]}, per Backtest gewählt). ` +
+            `Nächste Periode: ${nextDate}, Konfidenz ${Math.round(params.prediction.confidence * 100)}%.`
+        );
+      } else {
+        setTrainMessage(
+          `Noch zu wenige Daten. Es werden mindestens ${MIN_CYCLES_FOR_TRAINING} Zyklen mit plausibler Länge (21 bis 45 Tage) benötigt.`
+        );
+      }
+    } catch (error) {
+      console.error('Training fehlgeschlagen:', error);
+      setTrainMessage('Training fehlgeschlagen. Bitte versuche es erneut.');
+    } finally {
+      setIsTraining(false);
+    }
+  };
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -147,8 +198,8 @@ export function Settings() {
               <div className="text-sm text-gray-500 mt-2 space-y-1">
                 <div className="flex justify-between">
                   <span>Modelltyp:</span>
-                  <span className="font-medium capitalize">
-                    {modelParams.modelType.replace('_', ' ')}
+                  <span className="font-medium">
+                    {MODEL_TYPE_LABELS[modelParams.modelType] ?? modelParams.modelType}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -173,11 +224,73 @@ export function Settings() {
         </div>
       )}
 
-      {/* Trainings-Anleitung */}
+      {/* Modell-Training auf dem Gerät */}
+      <div className="card mb-4">
+        <div className="flex items-start gap-3">
+          <RefreshCw className="w-6 h-6 text-primary-600 flex-shrink-0" />
+          <div className="flex-1">
+            <h3 className="font-medium">Modell-Training</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Das Vorhersagemodell wird direkt auf diesem Gerät mit deinen
+              erfassten Zyklen trainiert. Deine Daten bleiben lokal.
+            </p>
+
+            <div className="flex items-center justify-between mt-4">
+              <div>
+                <div className="text-sm font-medium text-gray-800">
+                  Automatisch neu trainieren
+                </div>
+                <div className="text-xs text-gray-500">
+                  Nach jedem erfassten Periodenstart und -ende
+                </div>
+              </div>
+              <button
+                onClick={handleToggleAutoRetrain}
+                role="switch"
+                aria-checked={autoRetrainEnabled}
+                className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                  autoRetrainEnabled ? 'bg-primary-600' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                    autoRetrainEnabled ? 'translate-x-5' : ''
+                  }`}
+                />
+              </button>
+            </div>
+
+            <button
+              onClick={handleRetrainNow}
+              disabled={isTraining || !trainableCycles}
+              className="btn btn-primary mt-4 flex items-center gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${isTraining ? 'animate-spin' : ''}`} />
+              {isTraining ? 'Trainiere...' : 'Jetzt neu trainieren'}
+            </button>
+
+            {!trainableCycles && (
+              <p className="text-xs text-gray-500 mt-2">
+                Es werden mindestens {MIN_CYCLES_FOR_TRAINING} Zyklen mit plausibler
+                Länge (21 bis 45 Tage) benötigt.
+              </p>
+            )}
+
+            {trainMessage && (
+              <p className="text-sm text-primary-700 bg-primary-50 rounded-xl p-3 mt-3">
+                {trainMessage}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Trainings-Anleitung (Prophet, optional) */}
       <div className="card mb-4 bg-sky-50">
-        <h3 className="font-medium mb-2">Modell neu trainieren</h3>
+        <h3 className="font-medium mb-2">Prophet-Training (optional, am Mac)</h3>
         <p className="text-sm text-gray-600 mb-3">
-          Nach jeder Periode kannst du das Modell für bessere Vorhersagen neu trainieren:
+          Für die alltägliche Nutzung reicht das Training in der App. Wer mag,
+          kann zusätzlich das Prophet-Modell der Python-Pipeline nutzen:
         </p>
         <ol className="text-sm text-gray-600 space-y-2 list-decimal list-inside">
           <li>Exportiere deine Daten (oben)</li>
