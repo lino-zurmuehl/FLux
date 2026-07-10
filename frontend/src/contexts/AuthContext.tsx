@@ -9,7 +9,7 @@ import {
   useEffect,
   type ReactNode,
 } from 'react';
-import { hasPIN, verifyPIN, savePIN } from '../lib/auth';
+import { hasPIN, verifyPIN, savePIN, lockApp } from '../lib/auth';
 
 interface AuthState {
   isLoading: boolean;
@@ -61,6 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    // Drop the encryption key and decrypted data from memory.
+    lockApp();
     setIsAuthenticated(false);
   };
 

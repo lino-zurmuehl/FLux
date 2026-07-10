@@ -48,14 +48,9 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
     ? normalizeToNoon(parseISO(prediction.fertileWindowEnd))
     : null;
 
-  const ovulationDate = fertileStartDate && fertileEndDate
-    ? normalizeToNoon(
-        new Date(
-          fertileStartDate.getTime()
-          + Math.round((fertileEndDate.getTime() - fertileStartDate.getTime()) / 2)
-        )
-      )
-    : null;
+  // The ML pipeline defines the fertile window as ovulation-5 ... ovulation,
+  // so ovulation is the END of the window (not its midpoint).
+  const ovulationDate = fertileEndDate ? new Date(fertileEndDate) : null;
 
   const isFertilePhase = fertileStartDate !== null
     && fertileEndDate !== null

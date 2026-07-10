@@ -1,8 +1,9 @@
 /**
- * Client-side encryption utilities.
+ * Client-side encryption utilities (Web Crypto API).
  *
- * For maximum privacy, sensitive data can be encrypted in the browser
- * before being sent to the server. The server never sees the plaintext.
+ * Used by lib/secureStore.ts to encrypt all health data at rest in
+ * IndexedDB with an AES-GCM key derived from the user's PIN (PBKDF2,
+ * 480k iterations). Data never leaves the device.
  */
 
 export async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {

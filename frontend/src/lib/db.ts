@@ -1,12 +1,20 @@
 /**
- * IndexedDB database using Dexie.js
+ * Data access layer.
  *
- * All sensitive data (cycles, logs) is stored encrypted.
- * The encryption key is derived from the user's password and held in memory.
+ * All sensitive data (cycles, logs, model parameters) is stored encrypted
+ * at rest via lib/secureStore.ts: one AES-GCM encrypted dataset in
+ * IndexedDB, keyed by a PIN-derived key (PBKDF2) that only lives in
+ * memory while the app is unlocked.
+ *
+ * The functions below keep their original async signatures so pages and
+ * components are unaffected by the storage change.
  */
 
-import Dexie, { type Table } from 'dexie';
-import type { Cycle, DailyLog, ModelParams, AppSettings } from './types';
+import type { Cycle, DailyLog, ModelParams } from './types';
+import { db, getDataset, persist, wipeAll } from './secureStore';
+
+// Re-export the Dexie instance for backwards compatibility.
+export { db };
 
 function parseISODateLocal(dateStr: string): Date {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -20,72 +28,49 @@ function formatISODateLocal(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-/**
- * Database schema for FLux app.
- */
-export class FluxDatabase extends Dexie {
-  cycles!: Table<Cycle, number>;
-  logs!: Table<DailyLog, number>;
-  settings!: Table<AppSettings, string>;
-
-  constructor() {
-    super('flux');
-
-    this.version(1).stores({
-      cycles: '++id, startDate',
-      logs: '++id, date',
-      settings: 'key',
-    });
-  }
+function sortedCycles(): Cycle[] {
+  return [...getDataset().cycles].sort((a, b) => a.startDate.localeCompare(b.startDate));
 }
 
-// Singleton database instance
-export const db = new FluxDatabase();
-const MODEL_PARAMS_KEY = 'modelParams';
-const MODEL_PARAMS_BACKUP_KEY = 'modelParamsBeforePeriodStart';
+function sortedLogs(): DailyLog[] {
+  return [...getDataset().logs].sort((a, b) => a.date.localeCompare(b.date));
+}
 
 /**
- * Store model parameters in settings.
+ * Store model parameters.
  */
 export async function saveModelParams(params: ModelParams): Promise<void> {
-  await db.settings.put({
-    key: MODEL_PARAMS_KEY,
-    value: JSON.stringify(params),
-  });
+  const ds = getDataset();
+  ds.modelParams = params;
+  await persist();
 }
 
 /**
- * Get model parameters from settings.
+ * Get model parameters.
  */
 export async function getModelParams(): Promise<ModelParams | null> {
-  const setting = await db.settings.get(MODEL_PARAMS_KEY);
-  if (!setting) return null;
-  return JSON.parse(setting.value) as ModelParams;
+  return getDataset().modelParams;
 }
 
 /**
  * Store current model params so an accidental period start can be undone safely.
  */
 export async function backupModelParamsBeforePeriodStart(): Promise<void> {
-  const current = await getModelParams();
-  if (!current) return;
-  await db.settings.put({
-    key: MODEL_PARAMS_BACKUP_KEY,
-    value: JSON.stringify(current),
-  });
+  const ds = getDataset();
+  if (!ds.modelParams) return;
+  ds.modelParamsBackup = ds.modelParams;
+  await persist();
 }
 
 /**
  * Restore model params backup created before a period start.
  */
 export async function restoreModelParamsBackup(): Promise<boolean> {
-  const backup = await db.settings.get(MODEL_PARAMS_BACKUP_KEY);
-  if (!backup) return false;
-  await db.settings.put({
-    key: MODEL_PARAMS_KEY,
-    value: backup.value,
-  });
-  await db.settings.delete(MODEL_PARAMS_BACKUP_KEY);
+  const ds = getDataset();
+  if (!ds.modelParamsBackup) return false;
+  ds.modelParams = ds.modelParamsBackup;
+  ds.modelParamsBackup = null;
+  await persist();
   return true;
 }
 
@@ -93,14 +78,20 @@ export async function restoreModelParamsBackup(): Promise<boolean> {
  * Clear stale model backup once a period start is confirmed.
  */
 export async function clearModelParamsBackup(): Promise<void> {
-  await db.settings.delete(MODEL_PARAMS_BACKUP_KEY);
+  const ds = getDataset();
+  ds.modelParamsBackup = null;
+  await persist();
 }
 
 /**
  * Add a new cycle.
  */
 export async function addCycle(cycle: Omit<Cycle, 'id'>): Promise<number> {
-  return await db.cycles.add(cycle as Cycle);
+  const ds = getDataset();
+  const id = ds.nextCycleId++;
+  ds.cycles.push({ ...cycle, id });
+  await persist();
+  return id;
 }
 
 /**
@@ -110,84 +101,93 @@ export async function updateCycle(
   id: number,
   updates: Partial<Cycle>
 ): Promise<void> {
-  await db.cycles.update(id, updates);
+  const ds = getDataset();
+  const index = ds.cycles.findIndex((c) => c.id === id);
+  if (index === -1) return;
+  // Properties explicitly set to undefined are removed on JSON
+  // serialization, matching Dexie's previous update() semantics.
+  ds.cycles[index] = { ...ds.cycles[index], ...updates, id };
+  await persist();
 }
 
 /**
  * Delete a cycle by id.
  */
 export async function deleteCycle(id: number): Promise<void> {
-  await db.cycles.delete(id);
+  const ds = getDataset();
+  ds.cycles = ds.cycles.filter((c) => c.id !== id);
+  await persist();
 }
 
 /**
  * Get all cycles sorted by date.
  */
 export async function getAllCycles(): Promise<Cycle[]> {
-  return await db.cycles.orderBy('startDate').toArray();
+  return sortedCycles();
 }
 
 /**
  * Get the most recent cycle.
  */
 export async function getLatestCycle(): Promise<Cycle | undefined> {
-  return await db.cycles.orderBy('startDate').last();
+  const cycles = sortedCycles();
+  return cycles.length > 0 ? cycles[cycles.length - 1] : undefined;
 }
 
 /**
  * Get cycle by exact start date.
  */
 export async function getCycleByStartDate(startDate: string): Promise<Cycle | undefined> {
-  return await db.cycles.where('startDate').equals(startDate).first();
+  return getDataset().cycles.find((c) => c.startDate === startDate);
 }
 
 /**
- * Add a daily log entry.
+ * Add a daily log entry (one log per date - existing entries are replaced).
  */
 export async function addLog(log: Omit<DailyLog, 'id'>): Promise<number> {
-  // Check if log for this date already exists
-  const existing = await db.logs.where('date').equals(log.date).first();
-  if (existing) {
-    await db.logs.update(existing.id!, log);
-    return existing.id!;
+  const ds = getDataset();
+  const existing = ds.logs.find((l) => l.date === log.date);
+  if (existing?.id != null) {
+    const index = ds.logs.findIndex((l) => l.id === existing.id);
+    ds.logs[index] = { ...log, id: existing.id };
+    await persist();
+    return existing.id;
   }
-  return await db.logs.add(log as DailyLog);
+  const id = ds.nextLogId++;
+  ds.logs.push({ ...log, id });
+  await persist();
+  return id;
 }
 
 /**
  * Get log for a specific date.
  */
 export async function getLogByDate(date: string): Promise<DailyLog | undefined> {
-  return await db.logs.where('date').equals(date).first();
+  return getDataset().logs.find((l) => l.date === date);
 }
 
 /**
- * Get logs for a date range.
+ * Get logs for a date range (inclusive).
  */
 export async function getLogsInRange(
   startDate: string,
   endDate: string
 ): Promise<DailyLog[]> {
-  return await db.logs
-    .where('date')
-    .between(startDate, endDate, true, true)
-    .toArray();
+  return sortedLogs().filter((l) => l.date >= startDate && l.date <= endDate);
 }
 
 /**
  * Get all logs sorted by date.
  */
 export async function getAllLogs(): Promise<DailyLog[]> {
-  return await db.logs.orderBy('date').toArray();
+  return sortedLogs();
 }
 
 /**
- * Delete all data from the database.
+ * Delete all data from the database (including the PIN/encryption setup).
  */
 export async function deleteAllData(): Promise<void> {
-  await db.cycles.clear();
-  await db.logs.clear();
-  await db.settings.clear();
+  await wipeAll();
 }
 
 /**
@@ -199,61 +199,107 @@ export async function exportData(): Promise<{
   logs: DailyLog[];
   modelParams: ModelParams | null;
 }> {
-  const cycles = await getAllCycles();
-  const logs = await getAllLogs();
-  const modelParams = await getModelParams();
-
   return {
     exportedAt: new Date().toISOString(),
-    cycles,
-    logs,
-    modelParams,
+    cycles: sortedCycles(),
+    logs: sortedLogs(),
+    modelParams: getDataset().modelParams,
   };
 }
 
 /**
  * Import cycles from Flo export or app backup.
+ * Deduplicates by startDate so re-importing the same file updates
+ * existing cycles instead of creating duplicates.
  */
-export async function importCycles(cycles: Cycle[]): Promise<void> {
-  await db.cycles.bulkPut(cycles);
+export async function importCycles(
+  cycles: Cycle[]
+): Promise<{ added: number; updated: number }> {
+  const ds = getDataset();
+  let added = 0;
+  let updated = 0;
+
+  for (const cycle of cycles) {
+    // Never trust incoming ids - match on startDate instead.
+    const { id: _id, ...data } = cycle;
+    const index = ds.cycles.findIndex((c) => c.startDate === data.startDate);
+    if (index !== -1) {
+      ds.cycles[index] = { ...ds.cycles[index], ...data, id: ds.cycles[index].id };
+      updated++;
+    } else {
+      ds.cycles.push({ ...data, id: ds.nextCycleId++ });
+      added++;
+    }
+  }
+
+  await persist();
+  return { added, updated };
 }
 
 /**
  * Import logs from Flo export or app backup.
+ * Deduplicates by date (one log per day) so re-importing the same
+ * file updates existing entries instead of creating duplicates.
  */
-export async function importLogs(logs: DailyLog[]): Promise<void> {
-  await db.logs.bulkPut(logs);
+export async function importLogs(
+  logs: DailyLog[]
+): Promise<{ added: number; updated: number }> {
+  const ds = getDataset();
+  let added = 0;
+  let updated = 0;
+
+  for (const log of logs) {
+    const { id: _id, ...data } = log;
+    const index = ds.logs.findIndex((l) => l.date === data.date);
+    if (index !== -1) {
+      ds.logs[index] = { ...ds.logs[index], ...data, id: ds.logs[index].id };
+      updated++;
+    } else {
+      ds.logs.push({ ...data, id: ds.nextLogId++ });
+      added++;
+    }
+  }
+
+  await persist();
+  return { added, updated };
 }
 
 /**
  * Check if the app has been set up (has cycles or model params).
  */
 export async function hasData(): Promise<boolean> {
-  const cycleCount = await db.cycles.count();
-  if (cycleCount > 0) return true;
-
-  // Also consider having model params as "set up"
-  const modelParams = await getModelParams();
-  return modelParams !== null;
+  const ds = getDataset();
+  return ds.cycles.length > 0 || ds.modelParams !== null;
 }
 
 /**
  * Update prediction when a new period starts.
- * Recalculates nextPeriodDate based on avgCycleLength.
+ * Shifts nextPeriodDate by the model's expected cycle length and
+ * recomputes the fertile window with the same definition the ML
+ * pipeline uses: ovulation = next period - 14 days, fertile window =
+ * ovulation - 5 days ... ovulation.
  */
 export async function updatePredictionForNewCycle(cycleStartDate: string): Promise<void> {
   const modelParams = await getModelParams();
   if (!modelParams?.prediction) return;
 
+  // Prefer the trained prediction's cycle length (e.g. Prophet output);
+  // fall back to the historical average if it's missing/invalid.
+  const rawLength = modelParams.prediction.expectedCycleLength;
+  const cycleLength = Math.round(
+    Number.isFinite(rawLength) && rawLength > 0 ? rawLength : modelParams.avgCycleLength
+  );
+
   const startDate = parseISODateLocal(cycleStartDate);
   const nextPeriodDate = new Date(startDate);
-  nextPeriodDate.setDate(nextPeriodDate.getDate() + Math.round(modelParams.avgCycleLength));
+  nextPeriodDate.setDate(nextPeriodDate.getDate() + cycleLength);
 
-  // Update fertile window (typically day 10-16 of cycle)
+  // Same fertile-window definition as ml/preprocessing/feature_engineering.py
+  const ovulationOffset = cycleLength - 14;
   const fertileStart = new Date(startDate);
-  fertileStart.setDate(fertileStart.getDate() + 10);
+  fertileStart.setDate(fertileStart.getDate() + ovulationOffset - 5);
   const fertileEnd = new Date(startDate);
-  fertileEnd.setDate(fertileEnd.getDate() + 16);
+  fertileEnd.setDate(fertileEnd.getDate() + ovulationOffset);
 
   const updatedParams: ModelParams = {
     ...modelParams,

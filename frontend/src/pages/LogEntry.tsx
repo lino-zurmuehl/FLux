@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { format } from 'date-fns';
+import { differenceInCalendarDays, format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Check, ChevronLeft, ChevronRight, Droplet, Heart, Thermometer, Brain, AlertCircle } from 'lucide-react';
 import {
@@ -125,18 +125,37 @@ export function LogEntry() {
       await addLog(log);
 
       // If a bleed entry marks a new period start, create a cycle so cycle-day resets correctly.
+      // Mid-cycle bleeding (e.g. ovulation spotting) must NOT start a new cycle,
+      // so we require a plausible gap since the last period start AND ask the user.
       if (flow) {
         const existingCycle = await getCycleByStartDate(dateString);
         if (!existingCycle) {
           const latestCycle = await getLatestCycle();
-          const shouldStartNewCycle =
-            !latestCycle ||
-            (latestCycle.endDate && dateString > latestCycle.startDate);
+          const daysSinceLastStart = latestCycle
+            ? differenceInCalendarDays(new Date(dateString), new Date(latestCycle.startDate))
+            : null;
 
-          if (shouldStartNewCycle) {
-            await backupModelParamsBeforePeriodStart();
-            await addCycle({ startDate: dateString });
-            await updatePredictionForNewCycle(dateString);
+          // Shortest plausible cycle; anything earlier is treated as
+          // mid-cycle bleeding and only saved in the daily log.
+          const MIN_DAYS_FOR_NEW_CYCLE = 18;
+
+          const plausibleNewCycle =
+            !latestCycle ||
+            (Boolean(latestCycle.endDate) &&
+              daysSinceLastStart !== null &&
+              daysSinceLastStart >= MIN_DAYS_FOR_NEW_CYCLE);
+
+          if (plausibleNewCycle) {
+            const confirmed = window.confirm(
+              'Blutung als Start einer neuen Periode erfassen?\n\n' +
+                'OK = neue Periode beginnt an diesem Tag.\n' +
+                'Abbrechen = nur als Blutung im Tagebuch speichern (z.B. Zwischenblutung).'
+            );
+            if (confirmed) {
+              await backupModelParamsBeforePeriodStart();
+              await addCycle({ startDate: dateString });
+              await updatePredictionForNewCycle(dateString);
+            }
           }
         }
       }

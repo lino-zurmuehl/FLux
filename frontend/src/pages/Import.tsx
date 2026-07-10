@@ -7,7 +7,17 @@ import { useNavigate } from 'react-router-dom';
 import { Upload, FileJson, Check, AlertCircle } from 'lucide-react';
 import { importCycles, importLogs, saveModelParams } from '../lib/db';
 import { useApp } from '../contexts/AppContext';
-import type { Cycle, DailyLog, FlowIntensity, ModelParams } from '../lib/types';
+import type {
+  Cycle,
+  DailyLog,
+  Disturber,
+  FlowIntensity,
+  Fluid,
+  ModelParams,
+  Mood,
+  SexDrive,
+  Symptom,
+} from '../lib/types';
 
 type ImportType = 'flo' | 'model' | 'backup';
 
@@ -22,6 +32,123 @@ const FLO_FLOW_MAP: Record<number, FlowIntensity> = {
   2: 'medium',
   3: 'heavy',
 };
+
+// Flo subcategory -> internal value mappings.
+// Kept in sync with ml/preprocessing/flo_parser.py so the browser import
+// and the Python training pipeline interpret Flo exports identically.
+const FLO_SYMPTOM_MAP: Record<string, Symptom> = {
+  Acne: 'acne',
+  Backache: 'backache',
+  Bloating: 'bloating',
+  Cravings: 'cravings',
+  DrawingPain: 'cramps', // Flo calls cramps "DrawingPain"
+  Diarrhea: 'diarrhea',
+  Fatigue: 'fatigue',
+  FeelGood: 'feel_good',
+  Headache: 'headache',
+  Insomnia: 'insomnia',
+  TenderBreasts: 'tender_breasts',
+};
+
+const FLO_MOOD_MAP: Record<string, Mood> = {
+  Happy: 'happy',
+  Energetic: 'energetic',
+  Neutral: 'neutral',
+  Sad: 'sad',
+  Angry: 'angry',
+  Panic: 'anxious', // Flo uses "Panic" for anxiety
+  Depressed: 'depressed',
+  Apathetic: 'apathetic',
+  Confused: 'confused',
+  Swings: 'mood_swings',
+  VerySelfCritical: 'self_critical',
+  FeelingGuilty: 'feeling_guilty',
+};
+
+const FLO_FLUID_MAP: Record<string, Fluid> = {
+  Dry: 'dry',
+  Sticky: 'sticky',
+  Creamy: 'creamy',
+  Eggwhite: 'eggwhite',
+  ClumpyWhite: 'clumpy_white',
+  Bloody: 'bloody',
+};
+
+const FLO_DISTURBER_MAP: Record<string, Disturber> = {
+  Stress: 'stress',
+  Alcohol: 'alcohol',
+  Illness: 'illness',
+  Disease: 'illness',
+  Travel: 'travel',
+  Trip: 'travel',
+  Sleep: 'poor_sleep',
+  PoorSleep: 'poor_sleep',
+  BadSleep: 'poor_sleep',
+};
+
+const FLO_SEX_DRIVE_MAP: Record<string, SexDrive> = {
+  'High Sex Drive': 'high',
+  HighSexDrive: 'high',
+  High: 'high',
+  Low: 'low',
+  None: 'none',
+};
+
+/**
+ * Validate imported model parameters before persisting them.
+ * A malformed file would otherwise crash the dashboard on every load.
+ * Returns a list of problems (empty = valid).
+ */
+function validateModelParams(params: Partial<ModelParams>): string[] {
+  const problems: string[] = [];
+  const isFiniteNumber = (v: unknown): v is number =>
+    typeof v === 'number' && Number.isFinite(v);
+  const isISODate = (v: unknown): v is string =>
+    typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v);
+
+  if (typeof params.trainedAt !== 'string' || !params.trainedAt) {
+    problems.push('trainedAt fehlt');
+  }
+  if (!isFiniteNumber(params.cyclesTrained)) {
+    problems.push('cyclesTrained fehlt oder ist keine Zahl');
+  }
+  if (typeof params.modelType !== 'string' || !params.modelType) {
+    problems.push('modelType fehlt');
+  }
+  if (!isFiniteNumber(params.avgCycleLength) || params.avgCycleLength <= 0) {
+    problems.push('avgCycleLength fehlt oder ist ungültig');
+  }
+  if (!isFiniteNumber(params.stdCycleLength) || params.stdCycleLength < 0) {
+    problems.push('stdCycleLength fehlt oder ist ungültig');
+  }
+
+  const prediction = params.prediction;
+  if (!prediction || typeof prediction !== 'object') {
+    problems.push('prediction fehlt');
+  } else {
+    if (!isISODate(prediction.nextPeriodDate)) {
+      problems.push('prediction.nextPeriodDate fehlt oder ist kein Datum (YYYY-MM-DD)');
+    }
+    if (
+      !isFiniteNumber(prediction.confidence) ||
+      prediction.confidence < 0 ||
+      prediction.confidence > 1
+    ) {
+      problems.push('prediction.confidence fehlt oder liegt nicht zwischen 0 und 1');
+    }
+    if (!isFiniteNumber(prediction.expectedCycleLength) || prediction.expectedCycleLength <= 0) {
+      problems.push('prediction.expectedCycleLength fehlt oder ist ungültig');
+    }
+    if (prediction.fertileWindowStart !== undefined && prediction.fertileWindowStart !== null && !isISODate(prediction.fertileWindowStart)) {
+      problems.push('prediction.fertileWindowStart ist kein Datum');
+    }
+    if (prediction.fertileWindowEnd !== undefined && prediction.fertileWindowEnd !== null && !isISODate(prediction.fertileWindowEnd)) {
+      problems.push('prediction.fertileWindowEnd ist kein Datum');
+    }
+  }
+
+  return problems;
+}
 
 // Konvertiert snake_case zu camelCase (Python -> JS Kompatibilität)
 function snakeToCamel(obj: Record<string, unknown>): Record<string, unknown> {
@@ -173,21 +300,25 @@ export function Import() {
             existing.flow = FLO_FLOW_MAP[flowNum as keyof typeof FLO_FLOW_MAP];
           }
           existing.isPeriod = true;
-        } else if (category === 'Symptom' && subcategory) {
-          const symptom = subcategory as DailyLog['symptoms'][number];
+        } else if (category === 'Symptom' && subcategory in FLO_SYMPTOM_MAP) {
+          const symptom = FLO_SYMPTOM_MAP[subcategory];
           if (!existing.symptoms.includes(symptom)) {
             existing.symptoms.push(symptom);
           }
-        } else if (category === 'Mood' && subcategory) {
-          existing.mood = subcategory as DailyLog['mood'];
-        } else if (category === 'Fluid' && subcategory) {
-          existing.fluid = subcategory as DailyLog['fluid'];
-        } else if (category === 'Disturber' && subcategory) {
-          if (!existing.disturbers.includes(subcategory as DailyLog['disturbers'][number])) {
-            existing.disturbers.push(subcategory as DailyLog['disturbers'][number]);
+        } else if (category === 'Mood' && subcategory in FLO_MOOD_MAP) {
+          existing.mood = FLO_MOOD_MAP[subcategory];
+        } else if (category === 'Fluid' && subcategory in FLO_FLUID_MAP) {
+          existing.fluid = FLO_FLUID_MAP[subcategory];
+        } else if (category === 'Disturber' && subcategory in FLO_DISTURBER_MAP) {
+          const disturber = FLO_DISTURBER_MAP[subcategory];
+          if (!existing.disturbers.includes(disturber)) {
+            existing.disturbers.push(disturber);
           }
-        } else if (category === 'SexDrive' && subcategory) {
-          existing.sexDrive = subcategory as DailyLog['sexDrive'];
+        } else if (
+          (category === 'Sex' || category === 'SexDrive') &&
+          subcategory in FLO_SEX_DRIVE_MAP
+        ) {
+          existing.sexDrive = FLO_SEX_DRIVE_MAP[subcategory];
         } else if (category === 'Bbt') {
           const temp = Number(event.value);
           if (!Number.isNaN(temp)) {
@@ -242,8 +373,11 @@ export function Import() {
         // Modellparameter importieren (snake_case von Python zu camelCase konvertieren)
         const converted = snakeToCamel(data as Record<string, unknown>);
         const modelParams = converted as unknown as ModelParams;
-        if (!modelParams.prediction || !modelParams.trainedAt) {
-          throw new Error('Ungültige Modellparameter-Datei');
+        const problems = validateModelParams(modelParams);
+        if (problems.length > 0) {
+          throw new Error(
+            `Ungültige Modellparameter-Datei: ${problems.join('; ')}`
+          );
         }
         await saveModelParams(modelParams);
         await refreshData();
@@ -257,31 +391,42 @@ export function Import() {
         if (cycles.length === 0) {
           throw new Error('Keine Zyklusdaten in der Datei gefunden');
         }
-        await importCycles(cycles);
-        if (logs.length > 0) {
-          await importLogs(logs);
-        }
+        const cycleResult = await importCycles(cycles);
+        const logResult = logs.length > 0
+          ? await importLogs(logs)
+          : { added: 0, updated: 0 };
         await refreshData();
+        const cyclePart = cycleResult.updated > 0
+          ? `${cycleResult.added} Zyklen neu, ${cycleResult.updated} aktualisiert`
+          : `${cycleResult.added} Zyklen importiert`;
+        const logPart = logs.length > 0
+          ? logResult.updated > 0
+            ? ` und ${logResult.added} Einträge neu, ${logResult.updated} aktualisiert`
+            : ` und ${logResult.added} Einträge`
+          : '';
         setResult({
           success: true,
-          message: `${cycles.length} Zyklen importiert${logs.length > 0 ? ` und ${logs.length} Einträge` : ''}. Führe jetzt das Python-Training aus, um Vorhersagen zu generieren.`,
+          message: `${cyclePart}${logPart}. Führe jetzt das Python-Training aus, um Vorhersagen zu generieren.`,
         });
       } else if (importType === 'backup') {
         // App-Backup importieren
         const backup = data as { cycles: Cycle[]; logs: DailyLog[]; modelParams?: ModelParams | null };
-        if (backup.cycles) {
-          await importCycles(backup.cycles);
-        }
-        if (backup.logs) {
-          await importLogs(backup.logs);
-        }
+        const cycleResult = backup.cycles
+          ? await importCycles(backup.cycles)
+          : { added: 0, updated: 0 };
+        const logResult = backup.logs
+          ? await importLogs(backup.logs)
+          : { added: 0, updated: 0 };
         if (backup.modelParams) {
-          await saveModelParams(backup.modelParams);
+          const problems = validateModelParams(backup.modelParams);
+          if (problems.length === 0) {
+            await saveModelParams(backup.modelParams);
+          }
         }
         await refreshData();
         setResult({
           success: true,
-          message: `Backup wiederhergestellt: ${backup.cycles?.length ?? 0} Zyklen, ${backup.logs?.length ?? 0} Einträge${backup.modelParams ? ', Modellparameter' : ''}.`,
+          message: `Backup wiederhergestellt: ${cycleResult.added + cycleResult.updated} Zyklen, ${logResult.added + logResult.updated} Einträge${backup.modelParams ? ', Modellparameter' : ''}.`,
         });
       }
     } catch (error) {

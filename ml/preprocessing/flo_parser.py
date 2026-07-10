@@ -52,10 +52,20 @@ FLO_FLUID_MAP = {
 FLO_DISTURBER_MAP = {
     "Stress": "stress",
     "Alcohol": "alcohol",
+    "Illness": "illness",
+    "Disease": "illness",
+    "Travel": "travel",
+    "Trip": "travel",
+    "Sleep": "poor_sleep",
+    "PoorSleep": "poor_sleep",
+    "BadSleep": "poor_sleep",
 }
 
 FLO_SEX_DRIVE_MAP = {
     "High Sex Drive": "high",
+    "HighSexDrive": "high",
+    "High": "high",
+    "Low": "low",
     "None": "none",
 }
 
@@ -241,6 +251,7 @@ class FloParser:
                 disturbers=entry.get("disturbers", []),
                 temperature=entry.get("temperature") or entry.get("bbt"),
                 notes=entry.get("notes"),
+                is_period=entry.get("is_period"),
             )
             logs.append(log)
 
@@ -278,7 +289,17 @@ class FloParser:
             subcategory = event.get("subcategory", "")
 
             # Map Flo categories to our schema
-            if category == "Symptom" and subcategory in FLO_SYMPTOM_MAP:
+            if category == "Period":
+                # Flow intensity 0-3 -> spotting/light/medium/heavy
+                try:
+                    flow_num = int(event.get("value"))
+                except (TypeError, ValueError):
+                    flow_num = None
+                if flow_num is not None and flow_num in FLO_FLOW_MAP:
+                    logs_by_date[date_key]["flow"] = FLO_FLOW_MAP[flow_num]
+                logs_by_date[date_key]["is_period"] = True
+
+            elif category == "Symptom" and subcategory in FLO_SYMPTOM_MAP:
                 symptom = FLO_SYMPTOM_MAP[subcategory]
                 if symptom not in logs_by_date[date_key]["symptoms"]:
                     logs_by_date[date_key]["symptoms"].append(symptom)
@@ -294,8 +315,17 @@ class FloParser:
                 if disturber not in logs_by_date[date_key]["disturbers"]:
                     logs_by_date[date_key]["disturbers"].append(disturber)
 
-            elif category == "Sex" and subcategory in FLO_SEX_DRIVE_MAP:
+            elif category in ("Sex", "SexDrive") and subcategory in FLO_SEX_DRIVE_MAP:
                 logs_by_date[date_key]["sex_drive"] = FLO_SEX_DRIVE_MAP[subcategory]
+
+            elif category == "Bbt":
+                # Basal body temperature
+                try:
+                    temp = float(event.get("value"))
+                except (TypeError, ValueError):
+                    temp = None
+                if temp is not None:
+                    logs_by_date[date_key]["temperature"] = temp
 
         return list(logs_by_date.values())
 

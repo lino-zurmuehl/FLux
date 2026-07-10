@@ -1,56 +1,39 @@
 /**
- * Authentication utilities for PIN-based app protection.
- * Uses Web Crypto API for secure hashing.
+ * Authentication for PIN-based app protection.
+ *
+ * The PIN is no longer stored as a hash: it derives the AES-GCM key that
+ * encrypts all health data at rest (see lib/secureStore.ts). Verifying the
+ * PIN IS the successful authenticated decryption of the dataset, and a
+ * correct PIN is required before any data can be read at all.
  */
 
-import { db } from './db';
-
-const SALT = 'FLux-PIN-Salt-2024'; // Static salt for PIN hashing
+import { isInitialized, setupPin, unlock, lock } from './secureStore';
 
 /**
- * Hash a PIN using SHA-256.
- */
-export async function hashPIN(pin: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(pin + SALT);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Save PIN hash to settings.
+ * Save a new PIN and initialize the encrypted store
+ * (migrates any existing plaintext data from legacy installs).
  */
 export async function savePIN(pin: string): Promise<void> {
-  const hash = await hashPIN(pin);
-  await db.settings.put({
-    key: 'pinHash',
-    value: hash,
-  });
+  await setupPin(pin);
 }
 
 /**
- * Verify PIN against stored hash.
+ * Verify the PIN by unlocking the encrypted store.
  */
 export async function verifyPIN(pin: string): Promise<boolean> {
-  const setting = await db.settings.get('pinHash');
-  if (!setting) return false;
-
-  const inputHash = await hashPIN(pin);
-  return inputHash === setting.value;
+  return unlock(pin);
 }
 
 /**
  * Check if a PIN has been set up.
  */
 export async function hasPIN(): Promise<boolean> {
-  const setting = await db.settings.get('pinHash');
-  return setting !== null && setting !== undefined;
+  return isInitialized();
 }
 
 /**
- * Remove PIN (for settings reset).
+ * Lock the app: drops the key and decrypted data from memory.
  */
-export async function removePIN(): Promise<void> {
-  await db.settings.delete('pinHash');
+export function lockApp(): void {
+  lock();
 }
