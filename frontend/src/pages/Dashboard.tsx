@@ -1,14 +1,16 @@
 /**
- * Dashboard - Hauptansicht mit Vorhersage und Zyklusinfo.
+ * Dashboard - Hauptansicht mit Wochen-Kalender, Vorhersage und Zyklusring.
  */
 
 import { useNavigate } from 'react-router-dom';
-import { differenceInCalendarDays, parseISO } from 'date-fns';
+import { differenceInCalendarDays, format, parseISO } from 'date-fns';
+import { de } from 'date-fns/locale';
+import { Upload, CalendarDays } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { PredictionCard } from '../components/PredictionCard';
 import { CycleProgress } from '../components/CycleProgress';
 import { QuickLog } from '../components/QuickLog';
-import { Upload } from 'lucide-react';
+import { WeekStrip } from '../components/WeekStrip';
 
 export function Dashboard() {
   const { isLoading, hasSetup, modelParams, currentCycleDay, latestCycle } = useApp();
@@ -55,96 +57,97 @@ export function Dashboard() {
     );
   }
 
+  const prediction = modelParams?.prediction ?? null;
+  const isPeriodActive = Boolean(latestCycle && !latestCycle.endDate);
+
   const fertileWindowDays = (() => {
-    if (!modelParams?.prediction || !latestCycle?.startDate) {
+    if (
+      !prediction?.fertileWindowStart ||
+      !prediction?.fertileWindowEnd ||
+      !latestCycle?.startDate
+    ) {
       return { fertileStartDay: undefined, fertileEndDay: undefined };
     }
-    const { fertileWindowStart, fertileWindowEnd } = modelParams.prediction;
-    if (!fertileWindowStart || !fertileWindowEnd) {
-      return { fertileStartDay: undefined, fertileEndDay: undefined };
-    }
-
     const cycleStart = parseISO(latestCycle.startDate);
-    const fertileStartDate = parseISO(fertileWindowStart);
-    const fertileEndDate = parseISO(fertileWindowEnd);
-
     return {
-      fertileStartDay: differenceInCalendarDays(fertileStartDate, cycleStart) + 1,
-      fertileEndDay: differenceInCalendarDays(fertileEndDate, cycleStart) + 1,
+      fertileStartDay:
+        differenceInCalendarDays(parseISO(prediction.fertileWindowStart), cycleStart) + 1,
+      fertileEndDay:
+        differenceInCalendarDays(parseISO(prediction.fertileWindowEnd), cycleStart) + 1,
     };
   })();
 
-  const isPeriodPhase = Boolean(latestCycle && !latestCycle.endDate);
-  const isFertilePhase = Boolean(
-    currentCycleDay
-    && fertileWindowDays.fertileStartDay
-    && fertileWindowDays.fertileEndDay
-    && currentCycleDay >= fertileWindowDays.fertileStartDay
-    && currentCycleDay <= fertileWindowDays.fertileEndDay
-  );
-
-  const dashboardPhaseBackground = isPeriodPhase
-    ? 'bg-gradient-to-b from-primary-100/70 via-primary-50/80 to-transparent'
-    : isFertilePhase
-      ? 'bg-gradient-to-b from-sky-100/70 via-sky-50/80 to-transparent'
-      : '';
-
   return (
-    <div className={`p-4 max-w-lg mx-auto rounded-2xl ${dashboardPhaseBackground}`}>
-      {/* Header */}
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-primary-800">FLux</h1>
-        <p className="text-sm text-gray-500">Dein Zyklus auf einen Blick</p>
+    <div className="p-4 max-w-lg mx-auto pb-8">
+      {/* Kopfzeile */}
+      <header className="flex items-center justify-between mb-5">
+        <h1 className="text-lg font-extrabold text-primary-800 tracking-tight">FLux</h1>
+        <span className="text-base font-semibold text-gray-800 capitalize">
+          {format(new Date(), 'MMMM yyyy', { locale: de })}
+        </span>
+        <button
+          onClick={() => navigate('/calendar')}
+          className="p-2 rounded-full hover:bg-sky-100 text-primary-700"
+          title="Kalender öffnen"
+        >
+          <CalendarDays className="w-5 h-5" />
+        </button>
       </header>
+
+      {/* Wochen-Kalender */}
+      <WeekStrip latestCycle={latestCycle} prediction={prediction} />
 
       {/* Vorhersage-Karte */}
       <PredictionCard
-        prediction={modelParams?.prediction ?? null}
+        prediction={prediction}
         currentCycleDay={currentCycleDay}
-        isPeriodActive={Boolean(latestCycle && !latestCycle.endDate)}
+        isPeriodActive={isPeriodActive}
       />
 
       {/* Zyklus-Fortschritt */}
-      {modelParams?.prediction && currentCycleDay && (
+      {prediction && currentCycleDay && (
         <CycleProgress
           currentDay={currentCycleDay}
-          cycleLength={modelParams.prediction.expectedCycleLength}
-          periodLength={modelParams.prediction.periodLength ?? 5}
+          cycleLength={prediction.expectedCycleLength}
+          periodLength={prediction.periodLength ?? 5}
           fertileStart={fertileWindowDays.fertileStartDay}
           fertileEnd={fertileWindowDays.fertileEndDay}
         />
       )}
 
-      {/* Schnell-Eintrag */}
+      {/* Schnellaktionen */}
       <QuickLog />
 
       {/* Statistiken */}
       {modelParams && (
         <div className="card mt-4">
-          <h3 className="font-medium text-gray-700 mb-3">Zyklus-Statistiken</h3>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <div className="text-gray-500">Durchschnittlicher Zyklus</div>
-              <div className="font-semibold">
-                {Math.round(modelParams.avgCycleLength)} Tage
+          <h3 className="font-semibold text-gray-800 mb-3">Zyklus-Statistiken</h3>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              {
+                label: 'Durchschnittlicher Zyklus',
+                value: `${Math.round(modelParams.avgCycleLength)} Tage`,
+              },
+              { label: 'Erfasste Zyklen', value: `${modelParams.cyclesTrained}` },
+              {
+                label: 'Abweichung',
+                value: `±${modelParams.stdCycleLength.toFixed(1)} Tage`,
+              },
+              {
+                label: 'Modell',
+                value: modelParams.modelType.replace('_', ' '),
+              },
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                className="rounded-xl bg-sky-50/70 border border-sky-100 p-3"
+              >
+                <div className="text-xs text-gray-500">{stat.label}</div>
+                <div className="font-bold text-gray-800 capitalize mt-0.5">
+                  {stat.value}
+                </div>
               </div>
-            </div>
-            <div>
-              <div className="text-gray-500">Erfasste Zyklen</div>
-              <div className="font-semibold">{modelParams.cyclesTrained}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">Abweichung</div>
-              <div className="font-semibold">
-                ±{modelParams.stdCycleLength.toFixed(1)} Tage
-              </div>
-            </div>
-            <div>
-              <div className="text-gray-500">Modell</div>
-              <div className="font-semibold capitalize">
-                {modelParams.modelType.replace('_', ' ')}
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       )}

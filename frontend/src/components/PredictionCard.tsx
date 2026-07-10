@@ -1,5 +1,6 @@
 /**
  * Karte mit dem vorhergesagten nächsten Periodenstart.
+ * Bewusst ruhig gehalten: eine Kernaussage pro Phase.
  */
 
 import { format, differenceInCalendarDays, parseISO } from 'date-fns';
@@ -52,20 +53,11 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
   // so ovulation is the END of the window (not its midpoint).
   const ovulationDate = fertileEndDate ? new Date(fertileEndDate) : null;
 
-  const isFertilePhase = fertileStartDate !== null
+  const isFertilePhase = !isPeriodActive
+    && fertileStartDate !== null
     && fertileEndDate !== null
     && today >= fertileStartDate
     && today <= fertileEndDate;
-
-  const isOvulationPhase = ovulationDate !== null
-    && differenceInCalendarDays(today, ovulationDate) >= 0
-    && differenceInCalendarDays(today, ovulationDate) <= 2;
-
-  const postPeriodBeforeOvulation = !isPeriodActive
-    && ovulationDate !== null
-    && currentCycleDay !== null
-    && currentCycleDay > (prediction.periodLength ?? 5)
-    && today < ovulationDate;
 
   let statusMessage: string;
   let statusColor: string;
@@ -79,40 +71,15 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
     statusMessage = `Tag ${currentCycleDay} der Periode`;
     statusColor = 'text-primary-700';
     cardBackgroundClass = 'bg-gradient-to-br from-primary-200 via-primary-100 to-rose-100 border-primary-300';
-  } else if (postPeriodBeforeOvulation && ovulationDate) {
+  } else if (isFertilePhase && ovulationDate) {
     const daysUntilOvulation = differenceInCalendarDays(ovulationDate, today);
-    if (daysUntilOvulation === 0) {
+    if (daysUntilOvulation <= 0) {
       statusMessage = 'Eisprung heute';
     } else if (daysUntilOvulation === 1) {
       statusMessage = 'Eisprung morgen';
     } else {
-      statusMessage = `Noch ${daysUntilOvulation} Tage bis Eisprung`;
+      statusMessage = `Eisprung in ${daysUntilOvulation} Tagen`;
     }
-    statusColor = 'text-sky-600';
-    cardBackgroundClass = 'bg-gradient-to-br from-sky-100 via-sky-50 to-cyan-100 border-sky-300';
-    headerAccentClass = 'text-sky-600';
-    dayBadgeClass = 'text-sm bg-white px-3 py-1 rounded-full text-sky-700';
-    detailToneClass = 'text-sky-800';
-    detailBorderClass = 'border-sky-300';
-  } else if (isOvulationPhase && fertileEndDate && ovulationDate) {
-    const daysSinceOvulation = differenceInCalendarDays(today, ovulationDate);
-    const daysUntilFertileEnd = Math.max(0, differenceInCalendarDays(fertileEndDate, today));
-    if (daysSinceOvulation === 0) {
-      statusMessage = 'Eisprung heute';
-    } else {
-      statusMessage = `Eisprung +${daysSinceOvulation} • Fruchtbar noch ${daysUntilFertileEnd} Tage`;
-    }
-    statusColor = 'text-sky-600';
-    cardBackgroundClass = 'bg-gradient-to-br from-sky-100 via-sky-50 to-cyan-100 border-sky-300';
-    headerAccentClass = 'text-sky-600';
-    dayBadgeClass = 'text-sm bg-white px-3 py-1 rounded-full text-sky-700';
-    detailToneClass = 'text-sky-800';
-    detailBorderClass = 'border-sky-300';
-  } else if (isFertilePhase && fertileEndDate) {
-    const daysUntilFertileEnd = Math.max(0, differenceInCalendarDays(fertileEndDate, today));
-    statusMessage = daysUntilFertileEnd === 0
-      ? 'Letzter fruchtbarer Tag'
-      : `Fruchtbar • noch ${daysUntilFertileEnd} Tage`;
     statusColor = 'text-sky-600';
     cardBackgroundClass = 'bg-gradient-to-br from-sky-100 via-sky-50 to-cyan-100 border-sky-300';
     headerAccentClass = 'text-sky-600';
@@ -128,9 +95,6 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
     statusColor = 'text-primary-700';
   } else if (daysUntil === 1) {
     statusMessage = 'Morgen erwartet';
-    statusColor = 'text-primary-600';
-  } else if (daysUntil <= 3) {
-    statusMessage = `In ${daysUntil} Tagen`;
     statusColor = 'text-primary-600';
   } else {
     statusMessage = `In ${daysUntil} Tagen`;
@@ -158,7 +122,6 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
           {statusMessage}
         </div>
         <div className={detailToneClass}>
-          <span className="font-medium">Nächste Periode:</span>{' '}
           {format(nextDate, 'EEEE, d. MMMM', { locale: de })}
         </div>
       </div>
@@ -169,21 +132,15 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
           <span>{confidencePercent}% Konfidenz</span>
         </div>
         <span className={detailToneClass}>
-          {prediction.expectedCycleLength}-Tage-Zyklus
+          {prediction.expectedCycleLength} Tage Zyklus
         </span>
       </div>
 
       {prediction.fertileWindowStart && prediction.fertileWindowEnd && (
         <div className={`mt-3 pt-3 border-t text-sm ${detailToneClass} ${detailBorderClass}`}>
-          <span className="font-medium">Fruchtbares Fenster:</span>{' '}
-          {format(parseISO(prediction.fertileWindowStart), 'd. MMM', { locale: de })} -{' '}
+          <span className="font-medium">Fruchtbar:</span>{' '}
+          {format(parseISO(prediction.fertileWindowStart), 'd. MMM', { locale: de })} bis{' '}
           {format(parseISO(prediction.fertileWindowEnd), 'd. MMM', { locale: de })}
-          {ovulationDate && (
-            <>
-              {' '}• <span className="font-medium">Eisprung:</span>{' '}
-              {format(ovulationDate, 'd. MMM', { locale: de })}
-            </>
-          )}
         </div>
       )}
     </div>

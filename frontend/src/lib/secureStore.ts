@@ -14,7 +14,7 @@
 
 import Dexie, { type Table } from 'dexie';
 import { deriveKey, encrypt, decrypt, generateSalt } from '../utils/encryption';
-import type { Cycle, DailyLog, ModelParams, AppSettings } from './types';
+import type { Cycle, DailyLog, ModelParams, AppSettings, PredictionRecord } from './types';
 
 const ENC_SALT_KEY = 'encSalt';
 const ENC_DATA_KEY = 'encData';
@@ -31,6 +31,7 @@ export interface Dataset {
   logs: DailyLog[];
   modelParams: ModelParams | null;
   modelParamsBackup: ModelParams | null;
+  predictionHistory: PredictionRecord[];
   nextCycleId: number;
   nextLogId: number;
 }
@@ -81,6 +82,7 @@ function emptyDataset(): Dataset {
     logs: [],
     modelParams: null,
     modelParamsBackup: null,
+    predictionHistory: [],
     nextCycleId: 1,
     nextLogId: 1,
   };
@@ -112,6 +114,7 @@ async function readLegacyDataset(): Promise<Dataset> {
     logs,
     modelParams: modelRow ? (JSON.parse(modelRow.value) as ModelParams) : null,
     modelParamsBackup: backupRow ? (JSON.parse(backupRow.value) as ModelParams) : null,
+    predictionHistory: [],
     nextCycleId: maxId(cycles) + 1,
     nextLogId: maxId(logs) + 1,
   };
@@ -201,7 +204,10 @@ export async function unlock(pin: string): Promise<boolean> {
         fromBase64(payload.iv)
       );
       currentKey = key;
-      currentDataset = JSON.parse(plaintext) as Dataset;
+      const parsed = JSON.parse(plaintext) as Dataset;
+      // Datasets written by older app versions lack newer fields.
+      if (!Array.isArray(parsed.predictionHistory)) parsed.predictionHistory = [];
+      currentDataset = parsed;
       return true;
     } catch {
       // AES-GCM is authenticated: a wrong PIN fails decryption.

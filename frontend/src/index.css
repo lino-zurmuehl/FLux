@@ -10,11 +10,11 @@
 
 @layer components {
   .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200;
+    @apply px-5 py-2.5 rounded-full font-semibold transition-colors duration-200;
   }
 
   .btn-primary {
-    @apply bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800;
+    @apply bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 shadow-sm;
   }
 
   .btn-secondary {
@@ -26,14 +26,25 @@
   }
 
   .card {
-    @apply bg-white rounded-xl shadow-sm border border-sky-200 p-6;
+    @apply bg-white rounded-2xl shadow-sm border border-sky-100 p-6;
   }
 
   .input {
-    @apply w-full px-4 py-2 border border-sky-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-shadow;
+    @apply w-full px-4 py-2 border border-sky-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-shadow;
   }
 
   .label {
     @apply block text-sm font-medium text-gray-700 mb-1;
+  }
+}
+
+@layer utilities {
+  /* Horizontale Karten-Reihen ohne sichtbare Scrollbar */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }

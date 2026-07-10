@@ -4,6 +4,8 @@ import { AppProvider } from './contexts/AppContext';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { LogEntry } from './pages/LogEntry';
+import { Calendar } from './pages/Calendar';
+import { History } from './pages/History';
 import { Import } from './pages/Import';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
@@ -30,6 +32,8 @@ function AuthenticatedApp() {
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/log" element={<LogEntry />} />
+            <Route path="/calendar" element={<Calendar />} />
+            <Route path="/history" element={<History />} />
             <Route path="/import" element={<Import />} />
             <Route path="/settings" element={<Settings />} />
           </Route>

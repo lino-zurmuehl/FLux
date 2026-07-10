@@ -10,7 +10,7 @@
  * components are unaffected by the storage change.
  */
 
-import type { Cycle, DailyLog, ModelParams } from './types';
+import type { Cycle, DailyLog, ModelParams, PredictionRecord } from './types';
 import { db, getDataset, persist, wipeAll } from './secureStore';
 
 // Re-export the Dexie instance for backwards compatibility.
@@ -344,4 +344,81 @@ export async function getCurrentCycleDay(): Promise<number | null> {
   }
 
   return null;
+}
+
+/**
+ * Record how accurate the current prediction was, right before a new
+ * period start shifts it. Call BEFORE updatePredictionForNewCycle.
+ * Deduplicates by actual start date.
+ */
+export async function recordPredictionOutcome(actualStartDate: string): Promise<void> {
+  const ds = getDataset();
+  const prediction = ds.modelParams?.prediction;
+  if (!prediction?.nextPeriodDate) return;
+
+  const actual = parseISODateLocal(actualStartDate);
+  const predicted = parseISODateLocal(prediction.nextPeriodDate);
+  const errorDays = Math.round(
+    (actual.getTime() - predicted.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  const record = {
+    cycleStartDate: actualStartDate,
+    predictedDate: prediction.nextPeriodDate,
+    errorDays,
+    confidence: prediction.confidence,
+    modelType: ds.modelParams?.modelType,
+  };
+
+  const index = ds.predictionHistory.findIndex(
+    (r) => r.cycleStartDate === actualStartDate
+  );
+  if (index !== -1) {
+    ds.predictionHistory[index] = record;
+  } else {
+    ds.predictionHistory.push(record);
+  }
+  await persist();
+}
+
+/**
+ * Remove the accuracy record for a period start (e.g. when the start
+ * is undone).
+ */
+export async function removePredictionRecord(cycleStartDate: string): Promise<void> {
+  const ds = getDataset();
+  const before = ds.predictionHistory.length;
+  ds.predictionHistory = ds.predictionHistory.filter(
+    (r) => r.cycleStartDate !== cycleStartDate
+  );
+  if (ds.predictionHistory.length !== before) await persist();
+}
+
+/**
+ * Keep the accuracy record in sync when a period start date is corrected.
+ */
+export async function updatePredictionRecordStartDate(
+  oldStartDate: string,
+  newStartDate: string
+): Promise<void> {
+  const ds = getDataset();
+  const record = ds.predictionHistory.find((r) => r.cycleStartDate === oldStartDate);
+  if (!record) return;
+
+  const actual = parseISODateLocal(newStartDate);
+  const predicted = parseISODateLocal(record.predictedDate);
+  record.cycleStartDate = newStartDate;
+  record.errorDays = Math.round(
+    (actual.getTime() - predicted.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  await persist();
+}
+
+/**
+ * Get all recorded prediction outcomes sorted by cycle start date.
+ */
+export async function getPredictionHistory(): Promise<PredictionRecord[]> {
+  return [...getDataset().predictionHistory].sort((a, b) =>
+    a.cycleStartDate.localeCompare(b.cycleStartDate)
+  );
 }

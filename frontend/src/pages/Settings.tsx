@@ -3,7 +3,8 @@
  */
 
 import { useState } from 'react';
-import { Download, Trash2, Shield, Info, ExternalLink, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Download, Trash2, Shield, Info, ExternalLink, LogOut, Upload } from 'lucide-react';
 import { exportData, deleteAllData } from '../lib/db';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,6 +15,7 @@ export function Settings() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { refreshData, modelParams } = useApp();
   const { logout, refreshAuthStatus } = useAuth();
+  const navigate = useNavigate();
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -60,6 +62,24 @@ export function Settings() {
         <h1 className="text-2xl font-bold text-primary-800">Einstellungen</h1>
         <p className="text-sm text-gray-500">Verwalte deine Daten und Privatsphäre</p>
       </header>
+
+      {/* Daten importieren */}
+      <div className="card mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Upload className="w-6 h-6 text-primary-600" />
+            <div>
+              <h3 className="font-medium">Daten importieren</h3>
+              <p className="text-sm text-gray-500">
+                Flo-Export oder neue Modell-Parameter laden
+              </p>
+            </div>
+          </div>
+          <button onClick={() => navigate('/import')} className="btn btn-secondary">
+            Öffnen
+          </button>
+        </div>
+      </div>
 
       {/* App sperren */}
       <div className="card mb-4">

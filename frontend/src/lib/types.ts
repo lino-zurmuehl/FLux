@@ -180,6 +180,18 @@ export interface ModelParams {
 }
 
 /**
+ * Recorded prediction outcome: what the model predicted for a period
+ * start vs. when it actually started. Used for the accuracy history.
+ */
+export interface PredictionRecord {
+  cycleStartDate: string; // Actual period start (ISO date)
+  predictedDate: string; // What the model predicted beforehand (ISO date)
+  errorDays: number; // actual - predicted (positive = period came later)
+  confidence?: number; // Model confidence at prediction time
+  modelType?: string;
+}
+
+/**
  * App export format for retraining.
  */
 export interface AppExport {

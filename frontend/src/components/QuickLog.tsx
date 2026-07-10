@@ -1,5 +1,6 @@
 /**
- * Schnellaktion zum Erfassen des Periodenstarts/-endes.
+ * Schnellaktionen zum Erfassen des Periodenstarts/-endes,
+ * plus Korrektur von Start- und Enddatum.
  */
 
 import { useEffect, useState } from 'react';
@@ -7,16 +8,16 @@ import { Droplet, CheckCircle2, Calendar, X, Pencil } from 'lucide-react';
 import { format, differenceInCalendarDays, subDays } from 'date-fns';
 import { de } from 'date-fns/locale';
 import {
-  addCycle,
-  backupModelParamsBeforePeriodStart,
   deleteCycle,
   getAllCycles,
-  getCycleByStartDate,
   getLatestCycle as getLatestCycleFromDb,
+  removePredictionRecord,
   restoreModelParamsBackup,
   updateCycle,
   updatePredictionForNewCycle,
+  updatePredictionRecordStartDate,
 } from '../lib/db';
+import { startPeriod, endPeriod } from '../lib/periodActions';
 import { useApp } from '../contexts/AppContext';
 
 export function QuickLog() {
@@ -30,9 +31,7 @@ export function QuickLog() {
   const { refreshData, latestCycle } = useApp();
 
   // Period is active until the latest cycle gets an end date.
-  const isPeriodActive =
-    latestCycle &&
-    !latestCycle.endDate;
+  const isPeriodActive = latestCycle && !latestCycle.endDate;
 
   useEffect(() => {
     if (latestCycle?.startDate) {
@@ -44,26 +43,17 @@ export function QuickLog() {
     }
   }, [latestCycle?.id, latestCycle?.startDate, latestCycle?.endDate]);
 
-  const handlePeriodStart = async (date: string) => {
-    if (latestCycle && !latestCycle.endDate) {
-      alert('Beende zuerst die laufende Periode.');
-      return;
-    }
-    if (latestCycle && date <= latestCycle.startDate) {
-      alert('Der neue Periodenstart muss nach dem letzten Startdatum liegen.');
-      return;
-    }
-
+  const submitDate = async (date: string) => {
     setIsLogging(true);
     try {
-      const existing = await getCycleByStartDate(date);
-      if (existing) {
-        alert('Für dieses Datum existiert bereits ein Periodenstart.');
+      const result = isPeriodActive
+        ? await endPeriod(date, latestCycle)
+        : await startPeriod(date, latestCycle);
+
+      if (!result.ok && result.error) {
+        alert(result.error);
         return;
       }
-      await backupModelParamsBeforePeriodStart();
-      await addCycle({ startDate: date });
-      await updatePredictionForNewCycle(date);
       await refreshData();
       setShowDatePicker(false);
     } catch (error) {
@@ -73,50 +63,8 @@ export function QuickLog() {
     }
   };
 
-  const handlePeriodEnd = async (date: string) => {
-    if (!latestCycle?.id) return;
-
-    if (date < latestCycle.startDate) {
-      alert('Das Enddatum kann nicht vor dem Startdatum liegen.');
-      return;
-    }
-
-    setIsLogging(true);
-    try {
-      const periodLength = differenceInCalendarDays(
-        new Date(date),
-        new Date(latestCycle.startDate)
-      ) + 1;
-
-      await updateCycle(latestCycle.id, {
-        endDate: date,
-        periodLength,
-      });
-      await refreshData();
-      setShowDatePicker(false);
-    } catch (error) {
-      console.error('Fehler beim Erfassen:', error);
-    } finally {
-      setIsLogging(false);
-    }
-  };
-
-  const handleQuickAction = () => {
-    const today = format(new Date(), 'yyyy-MM-dd');
-    if (isPeriodActive) {
-      handlePeriodEnd(today);
-    } else {
-      handlePeriodStart(today);
-    }
-  };
-
-  const handleDateSubmit = () => {
-    if (isPeriodActive) {
-      handlePeriodEnd(selectedDate);
-    } else {
-      handlePeriodStart(selectedDate);
-    }
-  };
+  const handleQuickAction = () => submitDate(format(new Date(), 'yyyy-MM-dd'));
+  const handleDateSubmit = () => submitDate(selectedDate);
 
   const handleCorrectStartDate = async () => {
     if (!latestCycle?.id || !correctedStartDate) return;
@@ -136,6 +84,7 @@ export function QuickLog() {
         return;
       }
 
+      const oldStartDate = latestCycle.startDate;
       const updates: { startDate: string; periodLength?: number } = { startDate: correctedStartDate };
       if (latestCycle.endDate) {
         updates.periodLength =
@@ -143,6 +92,7 @@ export function QuickLog() {
       }
 
       await updateCycle(latestCycle.id, updates);
+      await updatePredictionRecordStartDate(oldStartDate, correctedStartDate);
       await updatePredictionForNewCycle(correctedStartDate);
       await refreshData();
     } catch (error) {
@@ -198,6 +148,7 @@ export function QuickLog() {
 
     setIsCorrecting(true);
     try {
+      await removePredictionRecord(latestCycle.startDate);
       await deleteCycle(latestCycle.id);
       const latestRemainingCycle = await getLatestCycleFromDb();
 
@@ -226,7 +177,7 @@ export function QuickLog() {
 
   return (
     <div className="card mt-4">
-      <h3 className="font-medium text-gray-700 mb-3">Schnellaktionen</h3>
+      <h3 className="font-semibold text-gray-800 mb-3">Schnellaktionen</h3>
 
       <div className="flex gap-3">
         {isPeriodActive ? (
@@ -259,12 +210,11 @@ export function QuickLog() {
         >
           <Calendar className="w-5 h-5" />
         </button>
-
       </div>
 
       {/* Date Picker Overlay */}
       {showDatePicker && (
-        <div className="mt-4 p-4 bg-sky-50 rounded-lg border border-sky-200">
+        <div className="mt-4 p-4 bg-sky-50 rounded-2xl border border-sky-100">
           <div className="flex items-center justify-between mb-3">
             <h4 className="font-medium text-gray-700">
               {isPeriodActive ? 'Wann endete die Periode?' : 'Wann startete die Periode?'}
@@ -283,9 +233,9 @@ export function QuickLog() {
               <button
                 key={day.value}
                 onClick={() => setSelectedDate(day.value)}
-                className={`p-2 text-center rounded text-sm transition-colors ${
+                className={`p-2 text-center rounded-xl text-sm transition-colors ${
                   selectedDate === day.value
-                    ? 'bg-primary-600 text-white'
+                    ? 'bg-primary-600 text-white shadow-sm'
                     : 'bg-white hover:bg-primary-100'
                 }`}
               >
@@ -305,9 +255,9 @@ export function QuickLog() {
                 <button
                   key={day.value}
                   onClick={() => setSelectedDate(day.value)}
-                  className={`p-2 text-center rounded text-sm transition-colors ${
+                  className={`p-2 text-center rounded-xl text-sm transition-colors ${
                     selectedDate === day.value
-                      ? 'bg-primary-600 text-white'
+                      ? 'bg-primary-600 text-white shadow-sm'
                       : 'bg-white hover:bg-primary-100'
                   }`}
                 >
@@ -340,10 +290,10 @@ export function QuickLog() {
 
       {/* Correction panel for accidental clicks */}
       {latestCycle && (
-        <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
+        <div className="mt-4 p-4 bg-white rounded-2xl border border-sky-100">
           <button
             onClick={() => setShowCorrection((v) => !v)}
-            className="w-full flex items-center justify-center gap-2 text-amber-800 font-medium"
+            className="w-full flex items-center justify-center gap-2 text-primary-700 font-medium"
           >
             <Pencil className="w-4 h-4" />
             {showCorrection ? 'Korrektur schließen' : 'Start/Ende korrigieren'}
@@ -409,8 +359,8 @@ export function QuickLog() {
                 </button>
               </div>
 
-              <p className="text-xs text-amber-700">
-                `Start rückgängig` ist nur möglich, solange noch kein Enddatum gesetzt wurde.
+              <p className="text-xs text-gray-500">
+                Start rückgängig ist nur möglich, solange noch kein Enddatum gesetzt wurde.
               </p>
             </div>
           )}
