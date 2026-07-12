@@ -45,6 +45,13 @@ export async function saveModelParams(params: ModelParams): Promise<void> {
   await persist();
 }
 
+/** Remove the current model after its source history has been deleted. */
+export async function clearModelParams(): Promise<void> {
+  const ds = getDataset();
+  ds.modelParams = null;
+  await persist();
+}
+
 /**
  * Get model parameters.
  */
@@ -104,9 +111,19 @@ export async function updateCycle(
   const ds = getDataset();
   const index = ds.cycles.findIndex((c) => c.id === id);
   if (index === -1) return;
+  const startDateChanged =
+    updates.startDate !== undefined && updates.startDate !== ds.cycles[index].startDate;
   // Properties explicitly set to undefined are removed on JSON
   // serialization, matching Dexie's previous update() semantics.
   ds.cycles[index] = { ...ds.cycles[index], ...updates, id };
+  if (startDateChanged) {
+    // A stored length describes the interval to the next start. Both the
+    // edited cycle and its predecessor may now have a stale value.
+    ds.cycles[index].length = undefined;
+    const sorted = [...ds.cycles].sort((a, b) => a.startDate.localeCompare(b.startDate));
+    const editedIndex = sorted.findIndex((cycle) => cycle.id === id);
+    if (editedIndex > 0) sorted[editedIndex - 1].length = undefined;
+  }
   await persist();
 }
 
@@ -115,8 +132,43 @@ export async function updateCycle(
  */
 export async function deleteCycle(id: number): Promise<void> {
   const ds = getDataset();
+  const cycle = ds.cycles.find((c) => c.id === id);
+  if (!cycle) return;
+  const previous = [...ds.cycles]
+    .filter((c) => c.id !== id && c.startDate < cycle.startDate)
+    .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
   ds.cycles = ds.cycles.filter((c) => c.id !== id);
+  if (previous) previous.length = undefined;
   await persist();
+}
+
+/**
+ * Delete a cycle and remove data that explicitly marks days in that period.
+ * Other diary fields (symptoms, notes, temperature, etc.) are preserved.
+ */
+export async function deleteCycleAndRelatedData(id: number): Promise<Cycle | undefined> {
+  const ds = getDataset();
+  const cycle = ds.cycles.find((c) => c.id === id);
+  if (!cycle) return undefined;
+
+  const endDate = cycle.endDate ?? cycle.startDate;
+  const previous = [...ds.cycles]
+    .filter((c) => c.id !== id && c.startDate < cycle.startDate)
+    .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
+  ds.cycles = ds.cycles.filter((c) => c.id !== id);
+  if (previous) previous.length = undefined;
+  ds.predictionHistory = ds.predictionHistory.filter(
+    (record) => record.cycleStartDate !== cycle.startDate
+  );
+  ds.logs = ds.logs.map((log) => {
+    if (log.date < cycle.startDate || log.date > endDate || (!log.flow && !log.isPeriod)) {
+      return log;
+    }
+    const { flow: _flow, isPeriod: _isPeriod, ...rest } = log;
+    return rest;
+  });
+  await persist();
+  return cycle;
 }
 
 /**

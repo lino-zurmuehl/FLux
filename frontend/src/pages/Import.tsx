@@ -6,7 +6,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, FileJson, Check, AlertCircle } from 'lucide-react';
 import { importCycles, importLogs, saveModelParams } from '../lib/db';
-import { retrainFromStoredCycles } from '../lib/trainer';
+import {
+  retrainFromStoredCycles,
+  MIN_PERIOD_STARTS_FOR_TRAINING,
+  MIN_VALID_CYCLE_LENGTHS,
+} from '../lib/trainer';
 import { useApp } from '../contexts/AppContext';
 import type {
   Cycle,
@@ -412,7 +416,8 @@ export function Import() {
           : '';
         const trainPart = trainedParams
           ? ' Das Modell wurde direkt auf dem Gerät trainiert, Vorhersagen sind bereit.'
-          : ' Für Vorhersagen werden mindestens 3 Zyklen benötigt.';
+          : ` Für Vorhersagen werden mindestens ${MIN_PERIOD_STARTS_FOR_TRAINING} ` +
+            `Periodenstarts und ${MIN_VALID_CYCLE_LENGTHS} abgeschlossene Zyklusintervalle benötigt.`;
         setResult({
           success: true,
           message: `${cyclePart}${logPart}.${trainPart}`,

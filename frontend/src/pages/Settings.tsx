@@ -8,7 +8,12 @@ import { format, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Download, Trash2, Shield, Info, ExternalLink, LogOut, Upload, RefreshCw } from 'lucide-react';
 import { exportData, deleteAllData, getAllCycles, getAutoRetrain, setAutoRetrain } from '../lib/db';
-import { retrainFromStoredCycles, canTrain, MIN_CYCLES_FOR_TRAINING } from '../lib/trainer';
+import {
+  retrainFromStoredCycles,
+  canTrain,
+  MIN_PERIOD_STARTS_FOR_TRAINING,
+  MIN_VALID_CYCLE_LENGTHS,
+} from '../lib/trainer';
 import { MODEL_TYPE_LABELS } from '../lib/types';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -51,13 +56,15 @@ export function Settings() {
           locale: de,
         });
         setTrainMessage(
-          `Modell aktualisiert mit ${params.cyclesTrained} Zyklen ` +
-            `(${MODEL_TYPE_LABELS[params.modelType]}, per Backtest gewählt). ` +
+            `Modell aktualisiert mit ${params.cyclesTrained} Periodenstarts ` +
+            `(${MODEL_TYPE_LABELS[params.modelType]}). ` +
             `Nächste Periode: ${nextDate}, Konfidenz ${Math.round(params.prediction.confidence * 100)}%.`
         );
       } else {
         setTrainMessage(
-          `Noch zu wenige Daten. Es werden mindestens ${MIN_CYCLES_FOR_TRAINING} Zyklen mit plausibler Länge (21 bis 45 Tage) benötigt.`
+          `Noch zu wenige Daten. Es werden mindestens ${MIN_PERIOD_STARTS_FOR_TRAINING} ` +
+            `Periodenstarts und ${MIN_VALID_CYCLE_LENGTHS} abgeschlossene Zyklusintervalle ` +
+            `mit plausibler Länge (21 bis 45 Tage) benötigt.`
         );
       }
     } catch (error) {
@@ -271,7 +278,8 @@ export function Settings() {
 
             {!trainableCycles && (
               <p className="text-xs text-gray-500 mt-2">
-                Es werden mindestens {MIN_CYCLES_FOR_TRAINING} Zyklen mit plausibler
+                Es werden mindestens {MIN_PERIOD_STARTS_FOR_TRAINING} Periodenstarts und{' '}
+                {MIN_VALID_CYCLE_LENGTHS} abgeschlossene Zyklusintervalle mit plausibler
                 Länge (21 bis 45 Tage) benötigt.
               </p>
             )}

@@ -23,7 +23,13 @@
 import { getAllCycles, saveModelParams } from './db';
 import type { Cycle, ModelParams, ModelType } from './types';
 
-export const MIN_CYCLES_FOR_TRAINING = 3;
+/**
+ * A cycle length is the interval between two period starts, so the last
+ * recorded period cannot contribute a length until the next period starts.
+ * Training therefore needs three valid intervals, which means four starts.
+ */
+export const MIN_VALID_CYCLE_LENGTHS = 3;
+export const MIN_PERIOD_STARTS_FOR_TRAINING = MIN_VALID_CYCLE_LENGTHS + 1;
 
 function parseISODateLocal(dateStr: string): Date {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -155,7 +161,9 @@ function backtestMAE(
   predict: (history: number[]) => number
 ): number | null {
   const errors: number[] = [];
-  for (let i = MIN_CYCLES_FOR_TRAINING; i < lengths.length; i++) {
+  // Start with four historical lengths so trend regression is actually
+  // fitted (with three it falls back to the weighted average).
+  for (let i = MIN_VALID_CYCLE_LENGTHS + 1; i < lengths.length; i++) {
     const predicted = predict(lengths.slice(0, i));
     errors.push(Math.abs(predicted - lengths[i]));
   }
@@ -165,36 +173,40 @@ function backtestMAE(
 /**
  * Waehlt per Backtest das Modell mit dem kleineren Fehler.
  * Ohne ausreichende Historie (oder bei Gleichstand) gewinnt der
- * gewichtete Durchschnitt als einfacheres Modell.
+ * gewichtete Durchschnitt als einfacheres Modell. `backtestPerformed`
+ * macht für die UI sichtbar, ob tatsächlich ein Holdout verglichen wurde.
  */
 export function selectBestModel(lengths: number[]): {
   modelType: Extract<ModelType, 'weighted_average' | 'trend_regression'>;
   backtestErrors: { weighted_average: number | null; trend_regression: number | null };
+  backtestPerformed: boolean;
 } {
   const waError = backtestMAE(lengths, MODEL_PREDICTORS.weighted_average);
   const trError = backtestMAE(lengths, MODEL_PREDICTORS.trend_regression);
 
   const backtestErrors = { weighted_average: waError, trend_regression: trError };
+  const backtestPerformed = waError !== null && trError !== null;
 
   // Trend-Modell nur, wenn es im Backtest klar besser war
   const EPSILON = 0.05;
   if (waError !== null && trError !== null && trError < waError - EPSILON) {
-    return { modelType: 'trend_regression', backtestErrors };
+    return { modelType: 'trend_regression', backtestErrors, backtestPerformed };
   }
-  return { modelType: 'weighted_average', backtestErrors };
+  return { modelType: 'weighted_average', backtestErrors, backtestPerformed };
 }
 
 /** Prüft, ob genug Daten für ein Training vorhanden sind. */
 export function canTrain(cycles: Cycle[]): boolean {
   return (
-    cycles.length >= MIN_CYCLES_FOR_TRAINING &&
-    computeValidCycleLengths(cycles).length >= MIN_CYCLES_FOR_TRAINING
+    cycles.length >= MIN_PERIOD_STARTS_FOR_TRAINING &&
+    computeValidCycleLengths(cycles).length >= MIN_VALID_CYCLE_LENGTHS
   );
 }
 
 /**
- * Trainiert auf der Zyklushistorie und waehlt per Backtest das bessere
- * Modell (gewichteter Durchschnitt oder Trend-Regression).
+ * Trainiert auf der Zyklushistorie und waehlt bei ausreichender Historie
+ * per Backtest das bessere Modell (gewichteter Durchschnitt oder
+ * Trend-Regression).
  * Gibt null zurück, wenn zu wenige gültige Zyklen vorhanden sind.
  */
 export function trainModel(cycles: Cycle[]): ModelParams | null {

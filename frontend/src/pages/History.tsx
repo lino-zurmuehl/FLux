@@ -6,8 +6,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { CalendarRange, Target } from 'lucide-react';
-import { getAllCycles, getPredictionHistory } from '../lib/db';
+import { CalendarRange, Target, Pencil, Trash2, Save, X } from 'lucide-react';
+import {
+  clearModelParams,
+  clearModelParamsBackup,
+  deleteCycleAndRelatedData,
+  getAllCycles,
+  getLatestCycle,
+  getPredictionHistory,
+  updateCycle,
+  updatePredictionRecordStartDate,
+  updatePredictionForNewCycle,
+} from '../lib/db';
+import { maybeAutoRetrain } from '../lib/periodActions';
 import { useApp } from '../contexts/AppContext';
 import type { Cycle, PredictionRecord } from '../lib/types';
 
@@ -36,18 +47,114 @@ export function History() {
   const { modelParams } = useApp();
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [records, setRecords] = useState<PredictionRecord[]>([]);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
+  const [isMutating, setIsMutating] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const load = async () => {
+    const [allCycles, history] = await Promise.all([
+      getAllCycles(),
+      getPredictionHistory(),
+    ]);
+    setCycles(allCycles);
+    setRecords(history);
+  };
 
   useEffect(() => {
-    async function load() {
-      const [allCycles, history] = await Promise.all([
-        getAllCycles(),
-        getPredictionHistory(),
-      ]);
-      setCycles(allCycles);
-      setRecords(history);
-    }
-    load();
+    void load();
   }, []);
+
+  const refreshPredictionAfterChange = async () => {
+    const latest = await getLatestCycle();
+    if (!latest) {
+      await clearModelParams();
+      await clearModelParamsBackup();
+      return;
+    }
+    const retrained = await maybeAutoRetrain();
+    if (!retrained) await updatePredictionForNewCycle(latest.startDate);
+  };
+
+  const beginEdit = (cycle: Cycle) => {
+    setActionError(null);
+    setEditingId(cycle.id ?? null);
+    setEditStartDate(cycle.startDate);
+    setEditEndDate(cycle.endDate ?? '');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setActionError(null);
+  };
+
+  const saveEdit = async (cycle: Cycle) => {
+    if (!cycle.id || !editStartDate) return;
+    setActionError(null);
+
+    if (editEndDate && editEndDate < editStartDate) {
+      setActionError('Das Enddatum kann nicht vor dem Startdatum liegen.');
+      return;
+    }
+
+    const index = cycles.findIndex((item) => item.id === cycle.id);
+    const previous = index > 0 ? cycles[index - 1] : undefined;
+    const next = index < cycles.length - 1 ? cycles[index + 1] : undefined;
+    if (previous && editStartDate <= previous.startDate) {
+      setActionError('Der Start muss nach dem vorherigen Periodenstart liegen.');
+      return;
+    }
+    if (next && editStartDate >= next.startDate) {
+      setActionError('Der Start muss vor dem nächsten Periodenstart liegen.');
+      return;
+    }
+
+    setIsMutating(true);
+    try {
+      const periodLength = editEndDate
+        ? differenceInCalendarDays(parseISO(editEndDate), parseISO(editStartDate)) + 1
+        : undefined;
+      await updateCycle(cycle.id, {
+        startDate: editStartDate,
+        endDate: editEndDate || undefined,
+        periodLength,
+      });
+      if (cycle.startDate !== editStartDate) {
+        await updatePredictionRecordStartDate(cycle.startDate, editStartDate);
+      }
+      await refreshPredictionAfterChange();
+      await load();
+      cancelEdit();
+    } catch (error) {
+      console.error('Zyklusänderung fehlgeschlagen:', error);
+      setActionError('Die Änderung konnte nicht gespeichert werden.');
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const deleteCycle = async (cycle: Cycle) => {
+    if (!cycle.id) return;
+    const confirmed = window.confirm(
+      'Diesen Periodeneintrag wirklich löschen? Perioden-Markierungen in diesem Zeitraum und die zugehörige Vorhersage-Aufzeichnung werden entfernt.'
+    );
+    if (!confirmed) return;
+
+    setIsMutating(true);
+    setActionError(null);
+    try {
+      await deleteCycleAndRelatedData(cycle.id);
+      await refreshPredictionAfterChange();
+      await load();
+      if (editingId === cycle.id) cancelEdit();
+    } catch (error) {
+      console.error('Zyklus löschen fehlgeschlagen:', error);
+      setActionError('Der Periodeneintrag konnte nicht gelöscht werden.');
+    } finally {
+      setIsMutating(false);
+    }
+  };
 
   // Zykluslängen: gespeicherte Länge oder Abstand zum nächsten Start
   const cycleRows = useMemo(() => {
@@ -229,45 +336,93 @@ export function History() {
             const deviation =
               length && avgLength ? Math.round(length - avgLength) : null;
             return (
-              <div
-                key={cycle.startDate}
-                className="flex items-center justify-between rounded-xl border border-sky-100 bg-white px-3 py-2.5 text-sm"
-              >
-                <div>
-                  <div className="font-medium text-gray-800">
-                    {format(parseISO(cycle.startDate), 'd. MMM yyyy', { locale: de })}
-                    {isCurrent && (
-                      <span className="ml-2 text-xs font-semibold text-primary-600">
-                        Aktuell
-                      </span>
-                    )}
+              editingId === cycle.id ? (
+                <div key={cycle.startDate} className="rounded-xl border border-primary-200 bg-primary-50 p-3 text-sm">
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="label">
+                      Startdatum
+                      <input
+                        type="date"
+                        value={editStartDate}
+                        onChange={(event) => setEditStartDate(event.target.value)}
+                        max={format(new Date(), 'yyyy-MM-dd')}
+                        className="input text-sm mt-1"
+                      />
+                    </label>
+                    <label className="label">
+                      Enddatum
+                      <input
+                        type="date"
+                        value={editEndDate}
+                        onChange={(event) => setEditEndDate(event.target.value)}
+                        min={editStartDate}
+                        max={format(new Date(), 'yyyy-MM-dd')}
+                        className="input text-sm mt-1"
+                      />
+                    </label>
                   </div>
-                  <div className="text-xs text-gray-500">
-                    {cycle.periodLength
-                      ? `Periode: ${cycle.periodLength} Tage`
-                      : cycle.endDate
-                        ? `Periode bis ${format(parseISO(cycle.endDate), 'd. MMM', { locale: de })}`
-                        : 'Periode läuft'}
+                  {actionError && <p className="text-xs text-red-600 mt-2">{actionError}</p>}
+                  <div className="flex gap-2 mt-3">
+                    <button onClick={() => void saveEdit(cycle)} disabled={isMutating} className="btn btn-primary flex-1 flex items-center justify-center gap-1">
+                      <Save className="w-4 h-4" /> Speichern
+                    </button>
+                    <button onClick={cancelEdit} disabled={isMutating} className="btn bg-white text-gray-600 flex-1 flex items-center justify-center gap-1">
+                      <X className="w-4 h-4" /> Abbrechen
+                    </button>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="font-semibold text-gray-800">
-                    {length ? `${length} Tage` : 'offen'}
-                  </div>
-                  {deviation !== null && deviation !== 0 && (
-                    <div
-                      className={`text-xs font-medium ${
-                        Math.abs(deviation) <= 2 ? 'text-gray-400' : 'text-amber-600'
-                      }`}
-                    >
-                      {deviation > 0 ? `+${deviation}` : deviation} vs. Ø
+              ) : (
+                <div
+                  key={cycle.startDate}
+                  className="flex items-center justify-between rounded-xl border border-sky-100 bg-white px-3 py-2.5 text-sm gap-2"
+                >
+                  <div>
+                    <div className="font-medium text-gray-800">
+                      {format(parseISO(cycle.startDate), 'd. MMM yyyy', { locale: de })}
+                      {isCurrent && (
+                        <span className="ml-2 text-xs font-semibold text-primary-600">
+                          Aktuell
+                        </span>
+                      )}
                     </div>
-                  )}
+                    <div className="text-xs text-gray-500">
+                      {cycle.periodLength
+                        ? `Periode: ${cycle.periodLength} Tage`
+                        : cycle.endDate
+                          ? `Periode bis ${format(parseISO(cycle.endDate), 'd. MMM', { locale: de })}`
+                          : 'Periode läuft'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <div className="font-semibold text-gray-800">
+                        {length ? `${length} Tage` : 'offen'}
+                      </div>
+                      {deviation !== null && deviation !== 0 && (
+                        <div
+                          className={`text-xs font-medium ${
+                            Math.abs(deviation) <= 2 ? 'text-gray-400' : 'text-amber-600'
+                          }`}
+                        >
+                          {deviation > 0 ? `+${deviation}` : deviation} vs. Ø
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => beginEdit(cycle)} disabled={isMutating} className="p-2 text-primary-700 hover:bg-primary-50 rounded-lg" aria-label="Zyklus bearbeiten">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => void deleteCycle(cycle)} disabled={isMutating} className="p-2 text-red-600 hover:bg-red-50 rounded-lg" aria-label="Zyklus löschen">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )
             );
           })}
         </div>
+        {actionError && editingId === null && (
+          <p className="text-sm text-red-600 mt-3">{actionError}</p>
+        )}
       </div>
     </div>
   );
