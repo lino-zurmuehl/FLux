@@ -1,6 +1,6 @@
 /**
  * Hero-Karte der Startseite: Zyklusring plus eine Kernaussage pro Phase
- * (nächste Periode, laufende Periode oder Zeitfenster rund um den Eisprung).
+ * (nächste Periode, laufende Periode oder fruchtbare Phase mit Eisprung-Countdown).
  */
 
 import { addDays, format, differenceInCalendarDays, parseISO, subDays } from 'date-fns';
@@ -8,6 +8,7 @@ import { de } from 'date-fns/locale';
 import { Calendar } from 'lucide-react';
 import type { Prediction } from '../lib/types';
 import { CycleProgress } from './CycleProgress';
+import { fertileWindowOf } from '../lib/ovulation';
 
 interface Props {
   prediction: Prediction | null;
@@ -49,12 +50,12 @@ export function PredictionCard({
   normalizeToNoon(nextDate);
   const daysUntil = differenceInCalendarDays(nextDate, today);
 
-  const fertileStartDate = prediction.fertileWindowStart
-    ? normalizeToNoon(parseISO(prediction.fertileWindowStart))
-    : null;
-  const fertileEndDate = prediction.fertileWindowEnd
-    ? normalizeToNoon(parseISO(prediction.fertileWindowEnd))
-    : null;
+  // Fruchtbare Phase: 5 Tage vor bis 1 Tag nach dem geschätzten Eisprung.
+  const fertile = fertileWindowOf(prediction);
+  const fertileStartDate = fertile ? normalizeToNoon(parseISO(fertile.start)) : null;
+  const fertileEndDate = fertile ? normalizeToNoon(parseISO(fertile.end)) : null;
+  const ovulationDate = fertile ? normalizeToNoon(parseISO(fertile.ovulation)) : null;
+  const daysToOvulation = ovulationDate ? differenceInCalendarDays(ovulationDate, today) : null;
 
   const isFertilePhase = !isPeriodActive
     && fertileStartDate !== null
@@ -71,7 +72,13 @@ export function PredictionCard({
     statusMessage = `Tag ${currentCycleDay} der Periode`;
     cardBackgroundClass = 'bg-gradient-to-b from-primary-100 to-primary-200 border-primary-300';
   } else if (isFertilePhase) {
-    statusMessage = 'Rund um den Eisprung';
+    if (daysToOvulation === null || daysToOvulation === 0) statusMessage = 'Eisprung heute';
+    else if (daysToOvulation > 0) {
+      statusMessage = `${daysToOvulation} ${daysToOvulation === 1 ? 'Tag' : 'Tage'} bis zum Eisprung`;
+    } else {
+      const daysAfter = Math.abs(daysToOvulation);
+      statusMessage = `${daysAfter} ${daysAfter === 1 ? 'Tag' : 'Tage'} nach dem Eisprung`;
+    }
     statusColor = 'text-sky-700';
     cardBackgroundClass = 'bg-gradient-to-b from-sky-50 to-sky-100 border-sky-300';
     detailToneClass = 'text-sky-800';
@@ -119,10 +126,10 @@ export function PredictionCard({
       <div className="text-center mt-4">
         {isFertilePhase && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-sky-700 mb-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Aktuelles Zeitfenster
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Fruchtbare Phase
           </span>
         )}
-        <div className={`${isFertilePhase ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight ${statusColor}`}>
+        <div className={`${isFertilePhase ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight leading-tight text-balance ${statusColor}`}>
           {statusMessage}
         </div>
         <div className={`mt-1 ${detailToneClass}`}>
@@ -134,7 +141,7 @@ export function PredictionCard({
         </div>
         {isFertilePhase ? (
           <>
-            <p className="text-xs text-sky-700 mt-2">Geschätzter Zeitraum · der genaue Zeitpunkt kann variieren.</p>
+            <p className="text-xs text-sky-700 mt-2">Geschätzt · der genaue Zeitpunkt kann variieren.</p>
             <p className={`text-sm mt-3 ${detailToneClass}`}>
               <span className="font-medium">Nächste Periode:</span> {shortDate(nextDate)}
             </p>
@@ -154,7 +161,11 @@ export function PredictionCard({
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 bg-sky-300 rounded-full" />
-            Rund um den Eisprung
+            Fruchtbare Phase
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 bg-sky-700 rounded-full" />
+            Eisprung
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-white" style={{ border: '2px solid #4c0d1c' }} />

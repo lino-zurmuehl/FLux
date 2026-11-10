@@ -10,6 +10,7 @@
  * components are unaffected by the storage change.
  */
 
+import { fertileWindowFor } from './ovulation';
 import type { Cycle, DailyLog, ModelParams, PredictionRecord } from './types';
 import { db, getDataset, persist, wipeAll } from './secureStore';
 import { automaticPeriodEnds, periodEndFor } from './periodDates';
@@ -382,7 +383,7 @@ export async function hasData(): Promise<boolean> {
  * Shifts nextPeriodDate by the model's expected cycle length and
  * recomputes the fertile window with the same definition the ML
  * pipeline uses: ovulation = next period - 14 days, fertile window =
- * ovulation - 5 days ... ovulation.
+ * ovulation - 5 days ... ovulation + 1 day.
  */
 export async function updatePredictionForNewCycle(cycleStartDate: string): Promise<void> {
   const modelParams = await getModelParams();
@@ -399,20 +400,15 @@ export async function updatePredictionForNewCycle(cycleStartDate: string): Promi
   const nextPeriodDate = new Date(startDate);
   nextPeriodDate.setDate(nextPeriodDate.getDate() + cycleLength);
 
-  // Same fertile-window definition as ml/preprocessing/feature_engineering.py
-  const ovulationOffset = cycleLength - 14;
-  const fertileStart = new Date(startDate);
-  fertileStart.setDate(fertileStart.getDate() + ovulationOffset - 5);
-  const fertileEnd = new Date(startDate);
-  fertileEnd.setDate(fertileEnd.getDate() + ovulationOffset);
+  const fertile = fertileWindowFor(formatISODateLocal(nextPeriodDate));
 
   const updatedParams: ModelParams = {
     ...modelParams,
     prediction: {
       ...modelParams.prediction,
       nextPeriodDate: formatISODateLocal(nextPeriodDate),
-      fertileWindowStart: formatISODateLocal(fertileStart),
-      fertileWindowEnd: formatISODateLocal(fertileEnd),
+      fertileWindowStart: fertile.start,
+      fertileWindowEnd: fertile.end,
     },
   };
 

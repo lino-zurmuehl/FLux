@@ -1,8 +1,14 @@
 /**
- * Zyklusring: zeigt Periode und das Zeitfenster rund um den Eisprung als
- * Segmente, der heutige Tag ist ein Marker auf dem Ring.
+ * Zyklusring: zeigt Periode und fruchtbare Phase (5 Tage vor bis 1 Tag nach
+ * dem geschätzten Eisprung) als Segmente; Eisprung und heutiger Tag sind Marker.
  * Wird im Dashboard in die Vorhersage-Karte eingebettet.
  */
+
+import {
+  DAYS_FROM_OVULATION_TO_PERIOD,
+  FERTILE_DAYS_AFTER_OVULATION,
+  FERTILE_DAYS_BEFORE_OVULATION,
+} from '../lib/ovulation';
 
 interface PhaseInput {
   currentDay: number;
@@ -26,7 +32,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 const PHASE_LABELS: Record<CyclePhaseKey, string> = {
   period: 'Periode',
   follicular: 'Follikelphase',
-  fertile: 'Rund um den Eisprung',
+  fertile: 'Fruchtbare Phase',
   luteal: 'Lutealphase',
   overdue: 'Überfällig',
 };
@@ -38,11 +44,24 @@ export function getCyclePhase({ currentDay, cycleLength, periodLength, fertileSt
   const safeCurrentDay = Math.max(1, Math.round(currentDay));
   const isOverdue = safeCurrentDay > safeCycleLength;
 
-  // Same six-day estimate as the model: five days before its estimated end.
+  // Same estimate as lib/ovulation.ts: ovulation 14 days before the next start,
+  // fertile phase from 5 days before to 1 day after it.
   // Cycle days count from 1; the next start is cycleLength days after this start.
-  const ovulationDay = clamp(Math.round(safeCycleLength - 14 + 1), 1, safeCycleLength);
-  const defaultFertileStart = clamp(Math.max(safePeriodLength + 1, ovulationDay - 5), 1, safeCycleLength);
-  const defaultFertileEnd = clamp(Math.max(defaultFertileStart, ovulationDay), defaultFertileStart, safeCycleLength);
+  const defaultOvulationDay = clamp(
+    Math.round(safeCycleLength - DAYS_FROM_OVULATION_TO_PERIOD + 1),
+    1,
+    safeCycleLength
+  );
+  const defaultFertileStart = clamp(
+    Math.max(safePeriodLength + 1, defaultOvulationDay - FERTILE_DAYS_BEFORE_OVULATION),
+    1,
+    safeCycleLength
+  );
+  const defaultFertileEnd = clamp(
+    Math.max(defaultFertileStart, defaultOvulationDay + FERTILE_DAYS_AFTER_OVULATION),
+    defaultFertileStart,
+    safeCycleLength
+  );
 
   const fertileStartDay = fertileStart
     ? clamp(Math.round(fertileStart), 1, safeCycleLength)
@@ -50,6 +69,7 @@ export function getCyclePhase({ currentDay, cycleLength, periodLength, fertileSt
   const fertileEndDay = fertileEnd
     ? clamp(Math.round(fertileEnd), fertileStartDay, safeCycleLength)
     : defaultFertileEnd;
+  const ovulationDay = clamp(fertileEndDay - FERTILE_DAYS_AFTER_OVULATION, fertileStartDay, fertileEndDay);
 
   let key: CyclePhaseKey = 'follicular';
   if (isOverdue) key = 'overdue';
@@ -66,6 +86,7 @@ export function getCyclePhase({ currentDay, cycleLength, periodLength, fertileSt
     safeCurrentDay,
     fertileStartDay,
     fertileEndDay,
+    ovulationDay,
   };
 }
 
@@ -87,6 +108,7 @@ export function CycleProgress({ size = 200, hideLegend = false, ...input }: Prop
     safeCurrentDay,
     fertileStartDay,
     fertileEndDay,
+    ovulationDay,
   } = getCyclePhase(input);
 
   const strokeWidth = 14;
@@ -106,11 +128,13 @@ export function CycleProgress({ size = 200, hideLegend = false, ...input }: Prop
     };
   };
 
-  // Marker sits in the middle of the current day.
-  const currentPercent = isOverdue ? 1 : (safeCurrentDay - 0.5) / safeCycleLength;
-  const angle = (currentPercent * 360 - 90) * (Math.PI / 180);
-  const markerX = center + radius * Math.cos(angle);
-  const markerY = center + radius * Math.sin(angle);
+  // Markers sit in the middle of their day.
+  const pointAt = (percent: number) => {
+    const angle = (percent * 360 - 90) * (Math.PI / 180);
+    return { x: center + radius * Math.cos(angle), y: center + radius * Math.sin(angle) };
+  };
+  const marker = pointAt(isOverdue ? 1 : (safeCurrentDay - 0.5) / safeCycleLength);
+  const ovulation = pointAt((ovulationDay - 0.5) / safeCycleLength);
 
   return (
     <div>
@@ -140,10 +164,16 @@ export function CycleProgress({ size = 200, hideLegend = false, ...input }: Prop
             />
           </svg>
 
+          {/* Geschätzter Eisprung */}
+          <div
+            className="absolute w-2.5 h-2.5 rounded-full bg-sky-700"
+            style={{ left: ovulation.x - 5, top: ovulation.y - 5 }}
+          />
+
           {/* Heute-Marker */}
           <div
             className="absolute w-6 h-6 rounded-full bg-white shadow-md transition-all duration-500"
-            style={{ left: markerX - 12, top: markerY - 12, border: '4px solid #4c0d1c' }}
+            style={{ left: marker.x - 12, top: marker.y - 12, border: '4px solid #4c0d1c' }}
           />
 
           <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -151,13 +181,13 @@ export function CycleProgress({ size = 200, hideLegend = false, ...input }: Prop
             <span className="text-5xl font-bold text-primary-800 leading-none mt-1 tabular-nums">
               {isOverdue ? safeCycleLength : safeCurrentDay}
             </span>
-            <span className="text-sm text-gray-500 mt-1">von {safeCycleLength}</span>
-            {isOverdue && (
-              <span className="text-xs font-semibold text-red-600">
-                +{safeCurrentDay - safeCycleLength} Tage
-              </span>
-            )}
-            <span className={`text-xs font-semibold mt-1 ${PHASE_TEXT[key]}`}>{label}</span>
+            <span className="text-sm text-gray-500 mt-1 leading-tight">
+              von {safeCycleLength}
+              {isOverdue && (
+                <span className="font-semibold text-red-600"> · +{safeCurrentDay - safeCycleLength}</span>
+              )}
+            </span>
+            <span className={`text-xs font-semibold mt-1 leading-tight whitespace-nowrap ${PHASE_TEXT[key]}`}>{label}</span>
           </div>
         </div>
       </div>
@@ -170,7 +200,7 @@ export function CycleProgress({ size = 200, hideLegend = false, ...input }: Prop
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 bg-sky-300 rounded-full" />
-            Rund um den Eisprung (T{fertileStartDay}–{fertileEndDay})
+            Fruchtbare Phase (T{fertileStartDay}–{fertileEndDay})
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-white" style={{ border: '2px solid #4c0d1c' }} />

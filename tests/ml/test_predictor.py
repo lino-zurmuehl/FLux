@@ -107,7 +107,7 @@ class TestCyclePredictor:
         assert result.fertile_window_end is not None
         # Fertile window should be before next period
         assert result.fertile_window_end < result.next_period_date
-        # Fertile window typically ~5 days
+        # Fertile window: 5 days before ovulation through 1 day after
         window_length = (result.fertile_window_end - result.fertile_window_start).days
         assert 4 <= window_length <= 6
 

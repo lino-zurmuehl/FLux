@@ -17,9 +17,10 @@
  * - Zykluslängen: Abstand aufeinanderfolgender Starts, gültig sind 21..45 Tage
  * - Trend-Kennzahl: Mittel der letzten 3 minus Mittel der älteren
  * - Konfidenz: aus Variationskoeffizient plus Historien-Bonus
- * - Fruchtbares Fenster: Eisprung = nächste Periode - 14, Fenster = Eisprung-5..Eisprung
+ * - Fruchtbares Fenster: Eisprung = nächste Periode - 14, Fenster = Eisprung-5..Eisprung+1
  */
 
+import { fertileWindowFor } from './ovulation';
 import { getAllCycles, saveModelParams } from './db';
 import type { Cycle, ModelParams, ModelType } from './types';
 
@@ -231,8 +232,7 @@ export function trainModel(cycles: Cycle[]): ModelParams | null {
   // Fruchtbares Fenster wie predict_fertile_window in der Python-Pipeline
   const lastStart = parseISODateLocal(sorted[sorted.length - 1].startDate);
   const nextPeriod = addDaysLocal(lastStart, predictedLength);
-  const ovulation = addDaysLocal(nextPeriod, -14);
-  const fertileStart = addDaysLocal(ovulation, -5);
+  const fertile = fertileWindowFor(formatISODateLocal(nextPeriod));
 
   return {
     trainedAt: new Date().toISOString(),
@@ -242,8 +242,8 @@ export function trainModel(cycles: Cycle[]): ModelParams | null {
       nextPeriodDate: formatISODateLocal(nextPeriod),
       confidence,
       expectedCycleLength: predictedLength,
-      fertileWindowStart: formatISODateLocal(fertileStart),
-      fertileWindowEnd: formatISODateLocal(ovulation),
+      fertileWindowStart: fertile.start,
+      fertileWindowEnd: fertile.end,
       periodLength: avgPeriodLength ? Math.round(avgPeriodLength) : undefined,
     },
     avgCycleLength,

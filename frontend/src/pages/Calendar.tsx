@@ -20,6 +20,7 @@ import {
   differenceInCalendarDays,
 } from 'date-fns';
 import { de } from 'date-fns/locale';
+import { fertileWindowOf } from '../lib/ovulation';
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react';
 import { getAllCycles, getLogsInRange } from '../lib/db';
 import { isValidDate, periodEndFor, shiftDate } from '../lib/periodDates';
@@ -200,14 +201,8 @@ export function Calendar() {
       );
       if (iso >= prediction.nextPeriodDate && iso <= predEnd) return 'predicted';
     }
-    if (
-      prediction?.fertileWindowStart &&
-      prediction?.fertileWindowEnd &&
-      iso >= prediction.fertileWindowStart &&
-      iso <= prediction.fertileWindowEnd
-    ) {
-      return 'fertile';
-    }
+    const fertile = fertileWindowOf(prediction);
+    if (fertile && iso >= fertile.start && iso <= fertile.end) return 'fertile';
     return 'plain';
   };
 
@@ -367,7 +362,7 @@ export function Calendar() {
           </span>
           <span className="flex items-center gap-1">
             <span className="w-3 h-3 rounded-full border-2 border-sky-300 bg-sky-50" />
-            Rund um den Eisprung
+            Fruchtbare Phase
           </span>
           <span className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />

@@ -62,7 +62,7 @@ describe('on-device trainer', () => {
     expect(params).not.toBeNull();
     expect(params?.prediction.nextPeriodDate).toBe('2026-04-27');
     expect(params?.prediction.fertileWindowStart).toBe('2026-04-08');
-    expect(params?.prediction.fertileWindowEnd).toBe('2026-04-13');
+    expect(params?.prediction.fertileWindowEnd).toBe('2026-04-14');
     expect(params?.prediction.confidence).toBeGreaterThanOrEqual(0.15);
     expect(params?.prediction.confidence).toBeLessThanOrEqual(0.95);
   });

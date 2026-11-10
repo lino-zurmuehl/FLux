@@ -142,15 +142,15 @@ def predict_fertile_window(
     """Estimate fertile window based on cycle length.
 
     Ovulation typically occurs 12-16 days before the next period.
-    Fertile window is approximately 5 days before ovulation + ovulation day.
+    Fertile window: 5 days before ovulation through 1 day after it (7 days).
     """
     # Estimate ovulation day (14 days before next period is common)
     days_before_next = 14
     next_period = last_period_start + timedelta(days=predicted_cycle_length)
     estimated_ovulation = next_period - timedelta(days=days_before_next)
 
-    # Fertile window: 5 days before ovulation through ovulation day
+    # Fertile window: 5 days before ovulation through 1 day after
     fertile_start = estimated_ovulation - timedelta(days=5)
-    fertile_end = estimated_ovulation
+    fertile_end = estimated_ovulation + timedelta(days=1)
 
     return fertile_start, fertile_end

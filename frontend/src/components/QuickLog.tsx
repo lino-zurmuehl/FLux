@@ -100,7 +100,7 @@ export function QuickLog() {
 
   return (
     <section className="card mt-4 p-5" aria-label="Periode erfassen">
-      <div className="flex items-baseline justify-between mb-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 mb-3">
         <h2 className="font-semibold text-gray-800">Deine Periode</h2>
         <span className="text-xs text-gray-500">
           {active && latestCycle

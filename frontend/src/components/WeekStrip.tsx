@@ -8,6 +8,7 @@ import { de } from 'date-fns/locale';
 import type { Cycle, Prediction } from '../lib/types';
 import { useNavigate } from 'react-router-dom';
 import { periodEndFor } from '../lib/periodDates';
+import { fertileWindowOf } from '../lib/ovulation';
 
 interface Props {
   latestCycle: Cycle | null;
@@ -47,12 +48,9 @@ function classifyDay(
   }
 
   // Fruchtbares Fenster
-  if (prediction?.fertileWindowStart && prediction?.fertileWindowEnd) {
-    const fs = prediction.fertileWindowStart;
-    const fe = prediction.fertileWindowEnd;
-    if (iso >= fs && iso <= fe) {
-      return 'fertile';
-    }
+  const fertile = fertileWindowOf(prediction);
+  if (fertile && iso >= fertile.start && iso <= fertile.end) {
+    return 'fertile';
   }
 
   return 'plain';
@@ -90,7 +88,7 @@ export function WeekStrip({ latestCycle, prediction }: Props) {
         const style = isToday ? DAY_STYLES[kind].today : DAY_STYLES[kind].idle;
 
         return (
-          <div key={date.toISOString()} className="flex flex-col items-center gap-1.5 flex-1">
+          <div key={date.toISOString()} className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
             <span
               className={`text-[11px] uppercase tracking-wide ${
                 isToday ? 'text-primary-700 font-bold' : 'text-gray-400 font-medium'
@@ -101,7 +99,7 @@ export function WeekStrip({ latestCycle, prediction }: Props) {
             <button
               onClick={() => navigate(`/calendar?date=${format(date, 'yyyy-MM-dd')}`)}
               aria-label={`Kalender für ${format(date, 'd. MMMM', { locale: de })} öffnen`}
-              className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${style}`}
+              className={`w-full max-w-[2.5rem] aspect-square rounded-full flex items-center justify-center text-sm font-semibold transition-all ${style}`}
             >
               {format(date, 'd')}
             </button>
