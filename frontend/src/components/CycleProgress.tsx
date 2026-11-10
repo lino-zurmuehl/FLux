@@ -1,8 +1,10 @@
 /**
- * Kreisförmige Fortschrittsanzeige für den aktuellen Zyklus.
+ * Zyklusring: zeigt Periode und das Zeitfenster rund um den Eisprung als
+ * Segmente, der heutige Tag ist ein Marker auf dem Ring.
+ * Wird im Dashboard in die Vorhersage-Karte eingebettet.
  */
 
-interface Props {
+interface PhaseInput {
   currentDay: number;
   cycleLength: number;
   periodLength: number;
@@ -10,26 +12,32 @@ interface Props {
   fertileEnd?: number; // Day of cycle
 }
 
-export function CycleProgress({
-  currentDay,
-  cycleLength,
-  periodLength,
-  fertileStart,
-  fertileEnd,
-}: Props) {
-  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+interface Props extends PhaseInput {
+  /** Ring-Durchmesser in px. */
+  size?: number;
+  /** Legende unter dem Ring ausblenden. */
+  hideLegend?: boolean;
+}
+
+export type CyclePhaseKey = 'period' | 'follicular' | 'fertile' | 'luteal' | 'overdue';
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const PHASE_LABELS: Record<CyclePhaseKey, string> = {
+  period: 'Periode',
+  follicular: 'Follikelphase',
+  fertile: 'Rund um den Eisprung',
+  luteal: 'Lutealphase',
+  overdue: 'Überfällig',
+};
+
+/** Leitet Phase und Segmentgrenzen aus Zyklustag und Zykluslänge ab. */
+export function getCyclePhase({ currentDay, cycleLength, periodLength, fertileStart, fertileEnd }: PhaseInput) {
   const safeCycleLength = Math.max(1, Math.round(cycleLength));
   const safePeriodLength = clamp(Math.round(periodLength), 1, safeCycleLength);
   const safeCurrentDay = Math.max(1, Math.round(currentDay));
   const isOverdue = safeCurrentDay > safeCycleLength;
 
-  const size = 200;
-  const strokeWidth = 20;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const center = size / 2;
-
-  // Calculate day ranges
   // Same six-day estimate as the model: five days before its estimated end.
   // Cycle days count from 1; the next start is cycleLength days after this start.
   const ovulationDay = clamp(Math.round(safeCycleLength - 14 + 1), 1, safeCycleLength);
@@ -43,67 +51,73 @@ export function CycleProgress({
     ? clamp(Math.round(fertileEnd), fertileStartDay, safeCycleLength)
     : defaultFertileEnd;
 
-  // Convert days to percentages (0-1)
-  const periodEndPercent = safePeriodLength / safeCycleLength;
-  const fertileStartPercent = (fertileStartDay - 1) / safeCycleLength;
-  const fertileEndPercent = fertileEndDay / safeCycleLength;
-  const currentPercent = Math.min(safeCurrentDay / safeCycleLength, 1);
+  let key: CyclePhaseKey = 'follicular';
+  if (isOverdue) key = 'overdue';
+  else if (safeCurrentDay <= safePeriodLength) key = 'period';
+  else if (safeCurrentDay >= fertileStartDay && safeCurrentDay <= fertileEndDay) key = 'fertile';
+  else if (safeCurrentDay > fertileEndDay) key = 'luteal';
 
-  // SVG dash calculations
-  // Period: starts at 0 (top of circle after rotation)
-  const periodDash = circumference * periodEndPercent;
+  return {
+    key,
+    label: PHASE_LABELS[key],
+    isOverdue,
+    safeCycleLength,
+    safePeriodLength,
+    safeCurrentDay,
+    fertileStartDay,
+    fertileEndDay,
+  };
+}
 
-  // Fertile window: starts at fertileStartPercent
-  const fertileDash = circumference * (fertileEndPercent - fertileStartPercent);
-  // Negative offset moves dash forward (clockwise after rotation)
-  const fertileOffset = -circumference * fertileStartPercent;
+const PHASE_TEXT: Record<CyclePhaseKey, string> = {
+  period: 'text-primary-700',
+  follicular: 'text-gray-600',
+  fertile: 'text-sky-700',
+  luteal: 'text-gray-600',
+  overdue: 'text-red-600',
+};
 
-  // Progress arc
-  const progressDash = circumference * currentPercent;
+export function CycleProgress({ size = 200, hideLegend = false, ...input }: Props) {
+  const {
+    key,
+    label,
+    isOverdue,
+    safeCycleLength,
+    safePeriodLength,
+    safeCurrentDay,
+    fertileStartDay,
+    fertileEndDay,
+  } = getCyclePhase(input);
 
-  // Calculate marker position (angle from top, clockwise)
+  const strokeWidth = 14;
+  const radius = (size - strokeWidth) / 2 - 4;
+  const circumference = 2 * Math.PI * radius;
+  const center = size / 2;
+
+  // Segment from the start of `fromDay` to the end of `toDay`. Round caps add
+  // half a stroke on each side, so the dash is shortened to stay inside its days.
+  const segment = (fromDay: number, toDay: number) => {
+    const start = ((fromDay - 1) / safeCycleLength) * circumference;
+    const length = ((toDay - fromDay + 1) / safeCycleLength) * circumference;
+    const dash = Math.max(0.1, length - strokeWidth);
+    return {
+      strokeDasharray: `${dash} ${circumference - dash}`,
+      strokeDashoffset: -(start + strokeWidth / 2),
+    };
+  };
+
+  // Marker sits in the middle of the current day.
+  const currentPercent = isOverdue ? 1 : (safeCurrentDay - 0.5) / safeCycleLength;
   const angle = (currentPercent * 360 - 90) * (Math.PI / 180);
   const markerX = center + radius * Math.cos(angle);
   const markerY = center + radius * Math.sin(angle);
 
-  // Determine current phase
-  let phase = 'Follikelphase';
-  let phaseColor = 'text-gray-600';
-  let cardPhaseClass = 'bg-white border-sky-200';
-  if (isOverdue) {
-    phase = 'Überfällig';
-    phaseColor = 'text-red-600';
-  } else if (safeCurrentDay <= safePeriodLength) {
-    phase = 'Periode';
-    phaseColor = 'text-primary-600';
-    cardPhaseClass = 'bg-gradient-to-br from-primary-100 via-primary-50 to-rose-100 border-primary-300';
-  } else if (safeCurrentDay >= fertileStartDay && safeCurrentDay <= fertileEndDay) {
-    phase = 'Rund um den Eisprung';
-    phaseColor = 'text-sky-600';
-    cardPhaseClass = 'bg-gradient-to-br from-sky-100 via-sky-50 to-cyan-100 border-sky-300';
-  } else if (safeCurrentDay > fertileEndDay) {
-    phase = 'Lutealphase';
-    phaseColor = 'text-gray-600';
-  }
-
   return (
-    <div className={`card mt-4 ${cardPhaseClass}`}>
-      <h3 className="font-medium text-gray-700 mb-4 text-center">Zyklusfortschritt</h3>
-
+    <div>
       <div className="flex justify-center">
         <div className="relative" style={{ width: size, height: size }}>
-          <svg width={size} height={size} className="transform -rotate-90">
-            {/* Background circle */}
-            <circle
-              cx={center}
-              cy={center}
-              r={radius}
-              fill="none"
-              stroke="#e0f2fe"
-              strokeWidth={strokeWidth}
-            />
-
-            {/* Period phase (starts at top) */}
+          <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
+            <circle cx={center} cy={center} r={radius} fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={strokeWidth} />
             <circle
               cx={center}
               cy={center}
@@ -111,11 +125,9 @@ export function CycleProgress({
               fill="none"
               stroke="#be123c"
               strokeWidth={strokeWidth}
-              strokeDasharray={`${periodDash} ${circumference - periodDash}`}
               strokeLinecap="round"
+              {...segment(1, safePeriodLength)}
             />
-
-            {/* Fertile window (offset to correct position) */}
             <circle
               cx={center}
               cy={center}
@@ -123,62 +135,49 @@ export function CycleProgress({
               fill="none"
               stroke="#7dd3fc"
               strokeWidth={strokeWidth}
-              strokeDasharray={`${fertileDash} ${circumference - fertileDash}`}
-              strokeDashoffset={fertileOffset}
               strokeLinecap="round"
-            />
-
-            {/* Progress arc (inner, shows current position) */}
-            <circle
-              cx={center}
-              cy={center}
-              r={radius}
-              fill="none"
-              stroke="#be123c"
-              strokeWidth={strokeWidth - 10}
-              strokeDasharray={`${progressDash} ${circumference - progressDash}`}
-              strokeLinecap="round"
-              className="transition-all duration-500"
+              {...segment(fertileStartDay, fertileEndDay)}
             />
           </svg>
 
-          {/* Current day marker */}
+          {/* Heute-Marker */}
           <div
-            className="absolute w-5 h-5 bg-white border-3 border-primary-700 rounded-full shadow-lg transition-all duration-500"
-            style={{
-              left: markerX - 10,
-              top: markerY - 10,
-              borderWidth: '3px',
-            }}
+            className="absolute w-6 h-6 rounded-full bg-white shadow-md transition-all duration-500"
+            style={{ left: markerX - 12, top: markerY - 12, border: '4px solid #4c0d1c' }}
           />
 
-          {/* Center text */}
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-4xl font-bold text-primary-700">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Zyklustag</span>
+            <span className="text-5xl font-bold text-primary-800 leading-none mt-1 tabular-nums">
               {isOverdue ? safeCycleLength : safeCurrentDay}
             </span>
-            <span className="text-sm text-gray-500">von {safeCycleLength}</span>
+            <span className="text-sm text-gray-500 mt-1">von {safeCycleLength}</span>
             {isOverdue && (
-              <span className="text-xs font-medium text-red-600">
+              <span className="text-xs font-semibold text-red-600">
                 +{safeCurrentDay - safeCycleLength} Tage
               </span>
             )}
-            <span className={`text-xs font-medium mt-1 ${phaseColor}`}>{phase}</span>
+            <span className={`text-xs font-semibold mt-1 ${PHASE_TEXT[key]}`}>{label}</span>
           </div>
         </div>
       </div>
 
-      {/* Legende */}
-      <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 text-xs">
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 bg-primary-200 rounded-full" />
-          <span className="text-gray-600">Periode ({safePeriodLength}T)</span>
+      {!hideLegend && (
+        <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-3 text-xs text-gray-600">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 bg-primary-500 rounded-full" />
+            Periode ({safePeriodLength}T)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 bg-sky-300 rounded-full" />
+            Rund um den Eisprung (T{fertileStartDay}–{fertileEndDay})
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-white" style={{ border: '2px solid #4c0d1c' }} />
+            Heute
+          </span>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 bg-sky-300 rounded-full" />
-          <span className="text-gray-600">Rund um den Eisprung (T{fertileStartDay}–{fertileEndDay})</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

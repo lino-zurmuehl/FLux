@@ -263,8 +263,9 @@ export function Calendar() {
       <div className="flex gap-2 mb-3">
         <button disabled={isSaving} onClick={() => {
           setEditing(!editing); setDraft(null); setEditMode('range'); setError(''); setMessage('');
-        }} className={`btn flex-1 ${editing ? 'btn-secondary' : 'btn-primary'}`}>
-          {editing ? 'Bearbeitung schließen' : 'Periode bearbeiten / nachtragen'}
+        }} className={`btn flex-1 flex items-center justify-center gap-2 ${editing ? 'btn-secondary' : 'bg-white text-primary-700 border border-primary-200 hover:bg-primary-50'}`}>
+          {!editing && <Pencil className="w-4 h-4" />}
+          {editing ? 'Bearbeitung schließen' : 'Periode bearbeiten oder nachtragen'}
         </button>
         {editing && draft && <button disabled={isSaving} onClick={() => { setDraft(null); setEditMode('range'); }} className="btn btn-secondary">Neue</button>}
       </div>

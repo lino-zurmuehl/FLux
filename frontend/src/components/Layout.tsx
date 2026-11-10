@@ -18,7 +18,7 @@ function NavItem({ to, icon: Icon, label }: { to: string; icon: typeof Home; lab
       end={to === '/'}
       className={({ isActive }) =>
         `flex flex-col items-center justify-center w-16 h-full transition-colors ${
-          isActive ? 'text-primary-700' : 'text-gray-400 hover:text-gray-600'
+          isActive ? 'text-primary-700' : 'text-gray-500 hover:text-gray-700'
         }`
       }
     >
@@ -49,7 +49,7 @@ export function Layout() {
       </main>
 
       {/* Untere Navigation */}
-      <nav aria-label="Hauptnavigation" className="fixed bottom-0 left-0 right-0 bg-white border-t border-sky-100 rounded-t-3xl shadow-[0_-4px_16px_rgba(0,0,0,0.06)] safe-area-inset-bottom">
+      <nav aria-label="Hauptnavigation" className="fixed bottom-0 left-0 right-0 bg-white border-t border-sky-100 rounded-t-3xl shadow-[0_-4px_16px_rgba(0,0,0,0.06)] pb-safe">
         <div className="flex justify-around items-center h-16 max-w-lg mx-auto">
           {items.map((item) => (
             <NavItem key={item.to} {...item} />

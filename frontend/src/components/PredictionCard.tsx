@@ -1,20 +1,28 @@
 /**
- * Karte mit dem vorhergesagten nächsten Periodenstart.
- * Bewusst ruhig gehalten: eine Kernaussage pro Phase.
+ * Hero-Karte der Startseite: Zyklusring plus eine Kernaussage pro Phase
+ * (nächste Periode, laufende Periode oder Zeitfenster rund um den Eisprung).
  */
 
-import { format, differenceInCalendarDays, parseISO } from 'date-fns';
+import { addDays, format, differenceInCalendarDays, parseISO, subDays } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { Calendar, TrendingUp } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import type { Prediction } from '../lib/types';
+import { CycleProgress } from './CycleProgress';
 
 interface Props {
   prediction: Prediction | null;
   currentCycleDay: number | null;
   isPeriodActive?: boolean;
+  /** Übliche Schwankung in Tagen (aus der Streuung der Zykluslängen). */
+  uncertaintyDays?: number;
 }
 
-export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = false }: Props) {
+export function PredictionCard({
+  prediction,
+  currentCycleDay,
+  isPeriodActive = false,
+  uncertaintyDays,
+}: Props) {
   const normalizeToNoon = (date: Date) => {
     date.setHours(12, 0, 0, 0);
     return date;
@@ -40,7 +48,6 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
   const today = normalizeToNoon(new Date());
   normalizeToNoon(nextDate);
   const daysUntil = differenceInCalendarDays(nextDate, today);
-  const confidencePercent = Math.round(prediction.confidence * 100);
 
   const fertileStartDate = prediction.fertileWindowStart
     ? normalizeToNoon(parseISO(prediction.fertileWindowStart))
@@ -56,91 +63,103 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
     && today <= fertileEndDate;
 
   let statusMessage: string;
-  let statusColor: string;
-  let cardBackgroundClass = 'bg-gradient-to-br from-primary-50 to-primary-100 border-primary-200';
-  let headerAccentClass = 'text-primary-600';
-  let dayBadgeClass = 'text-sm bg-white px-3 py-1 rounded-full text-primary-700';
-  let detailToneClass = 'text-primary-700';
-  let detailBorderClass = 'border-primary-200';
+  let statusColor = 'text-primary-800';
+  let cardBackgroundClass = 'bg-gradient-to-b from-primary-50 to-primary-100 border-primary-200';
+  let detailToneClass = 'text-primary-800';
 
   if (isPeriodActive && currentCycleDay !== null) {
     statusMessage = `Tag ${currentCycleDay} der Periode`;
-    statusColor = 'text-primary-700';
-    cardBackgroundClass = 'bg-gradient-to-br from-primary-200 via-primary-100 to-rose-100 border-primary-300';
+    cardBackgroundClass = 'bg-gradient-to-b from-primary-100 to-primary-200 border-primary-300';
   } else if (isFertilePhase) {
     statusMessage = 'Rund um den Eisprung';
-    statusColor = 'text-sky-600';
-    cardBackgroundClass = 'bg-gradient-to-br from-sky-100 via-sky-50 to-cyan-100 border-sky-300';
-    headerAccentClass = 'text-sky-600';
-    dayBadgeClass = 'text-sm bg-white px-3 py-1 rounded-full text-sky-700';
+    statusColor = 'text-sky-700';
+    cardBackgroundClass = 'bg-gradient-to-b from-sky-50 to-sky-100 border-sky-300';
     detailToneClass = 'text-sky-800';
-    detailBorderClass = 'border-sky-300';
   } else if (daysUntil < 0) {
     const overdueDays = Math.abs(daysUntil);
     statusMessage = `${overdueDays} ${overdueDays === 1 ? 'Tag' : 'Tage'} überfällig`;
     statusColor = 'text-red-600';
   } else if (daysUntil === 0) {
     statusMessage = 'Heute erwartet';
-    statusColor = 'text-primary-700';
   } else if (daysUntil === 1) {
     statusMessage = 'Morgen erwartet';
-    statusColor = 'text-primary-600';
   } else {
     statusMessage = `In ${daysUntil} Tagen`;
-    statusColor = 'text-primary-700';
   }
 
+  // Ring: Fenster-Tage relativ zum Start des laufenden Zyklus.
+  const cycleStart = currentCycleDay ? subDays(today, currentCycleDay - 1) : null;
+  const toCycleDay = (date: Date | null) =>
+    cycleStart && date ? differenceInCalendarDays(date, cycleStart) + 1 : undefined;
+  const basePeriodLength = prediction.periodLength ?? 5;
+
+  const shortDate = (date: Date) => format(date, 'd. MMM', { locale: de });
+  const spread = uncertaintyDays && uncertaintyDays > 0 ? Math.round(uncertaintyDays) : 0;
+  const rangeText = spread > 0
+    ? `Meist zwischen ${shortDate(subDays(nextDate, spread))} und ${shortDate(addDays(nextDate, spread))}`
+    : null;
+
   return (
-    <div className={`card ${cardBackgroundClass}`}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <Calendar className={`w-6 h-6 ${headerAccentClass}`} />
-          <h2 className="text-lg font-semibold text-primary-900">
-            {isFertilePhase ? 'Deine Zyklusphase' : 'Nächste Periode'}
-          </h2>
-        </div>
-        {currentCycleDay && (
-          <span className={dayBadgeClass}>
-            Tag {currentCycleDay}
+    <div className={`card px-5 pt-4 pb-5 ${cardBackgroundClass}`}>
+      <h2 className={`text-xs font-semibold uppercase tracking-wider text-center mb-3 ${detailToneClass} opacity-80`}>
+        {isFertilePhase ? 'Deine Zyklusphase' : isPeriodActive ? 'Deine Periode' : 'Nächste Periode'}
+      </h2>
+
+      {currentCycleDay && (
+        <CycleProgress
+          currentDay={currentCycleDay}
+          cycleLength={prediction.expectedCycleLength}
+          periodLength={isPeriodActive ? Math.max(basePeriodLength, currentCycleDay) : basePeriodLength}
+          fertileStart={toCycleDay(fertileStartDate)}
+          fertileEnd={toCycleDay(fertileEndDate)}
+          hideLegend
+        />
+      )}
+
+      <div className="text-center mt-4">
+        {isFertilePhase && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-sky-700 mb-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Aktuelles Zeitfenster
           </span>
+        )}
+        <div className={`${isFertilePhase ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight ${statusColor}`}>
+          {statusMessage}
+        </div>
+        <div className={`mt-1 ${detailToneClass}`}>
+          {isFertilePhase && fertileStartDate && fertileEndDate
+            ? `${shortDate(fertileStartDate)} – ${shortDate(fertileEndDate)}`
+            : isPeriodActive
+              ? `Nächste Periode: ${shortDate(nextDate)}`
+              : format(nextDate, 'EEEE, d. MMMM', { locale: de })}
+        </div>
+        {isFertilePhase ? (
+          <>
+            <p className="text-xs text-sky-700 mt-2">Geschätzter Zeitraum · der genaue Zeitpunkt kann variieren.</p>
+            <p className={`text-sm mt-3 ${detailToneClass}`}>
+              <span className="font-medium">Nächste Periode:</span> {shortDate(nextDate)}
+            </p>
+          </>
+        ) : (
+          !isPeriodActive && rangeText && daysUntil >= 0 && (
+            <p className={`text-xs mt-1.5 ${detailToneClass} opacity-80`}>{rangeText}</p>
+          )
         )}
       </div>
 
-      <div className="text-center py-4">
-        {isFertilePhase && <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-sky-700 mb-3">
-          <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Aktuelles Zeitfenster
-        </span>}
-        <div className={`${isFertilePhase ? 'text-2xl' : 'text-3xl'} font-bold ${statusColor} mb-1`}>
-          {statusMessage}
-        </div>
-        <div className={detailToneClass}>
-          {isFertilePhase && fertileStartDate && fertileEndDate
-            ? `${format(fertileStartDate, 'd. MMM', { locale: de })} – ${format(fertileEndDate, 'd. MMM', { locale: de })}`
-            : format(nextDate, 'EEEE, d. MMMM', { locale: de })}
-        </div>
-        {isFertilePhase && <p className="text-xs text-sky-700 mt-2">Geschätzter Zeitraum · der genaue Zeitpunkt kann variieren.</p>}
-      </div>
-
-      <div className={`flex items-center justify-between text-sm pt-4 border-t ${detailBorderClass}`}>
-        <div className={`flex items-center gap-1 ${detailToneClass}`}>
-          <TrendingUp className="w-4 h-4" />
-          <span>{confidencePercent}% Konfidenz</span>
-        </div>
-        <span className={detailToneClass}>
-          {prediction.expectedCycleLength} Tage Zyklus
-        </span>
-      </div>
-
-      {isFertilePhase ? (
-        <div className={`mt-3 pt-3 border-t text-sm ${detailToneClass} ${detailBorderClass}`}>
-          <span className="font-medium">Nächste Periode:</span>{' '}
-          {format(nextDate, 'd. MMM', { locale: de })}
-        </div>
-      ) : prediction.fertileWindowStart && prediction.fertileWindowEnd && (
-        <div className={`mt-3 pt-3 border-t text-sm ${detailToneClass} ${detailBorderClass}`}>
-          <span className="font-medium">Rund um den Eisprung:</span>{' '}
-          {format(parseISO(prediction.fertileWindowStart), 'd. MMM', { locale: de })} bis{' '}
-          {format(parseISO(prediction.fertileWindowEnd), 'd. MMM', { locale: de })}
+      {currentCycleDay && (
+        <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-4 text-[11px] text-gray-600">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 bg-primary-500 rounded-full" />
+            Periode
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 bg-sky-300 rounded-full" />
+            Rund um den Eisprung
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-white" style={{ border: '2px solid #4c0d1c' }} />
+            Heute
+          </span>
         </div>
       )}
     </div>

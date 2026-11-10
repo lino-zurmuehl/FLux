@@ -1,15 +1,13 @@
 /**
- * Dashboard - Hauptansicht mit Wochen-Kalender, Vorhersage und Zyklusring.
+ * Dashboard - Hauptansicht mit Wochen-Kalender, Vorhersage-Karte (inkl. Zyklusring) und Heute-Aktionen.
  */
 
 import { useNavigate } from 'react-router-dom';
-import { differenceInCalendarDays, format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Upload, CalendarDays } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
-import { MODEL_TYPE_LABELS } from '../lib/types';
 import { PredictionCard } from '../components/PredictionCard';
-import { CycleProgress } from '../components/CycleProgress';
 import { QuickLog } from '../components/QuickLog';
 import { WeekStrip } from '../components/WeekStrip';
 
@@ -62,23 +60,6 @@ export function Dashboard() {
   const prediction = modelParams?.prediction ?? null;
   const isPeriodActive = Boolean(latestCycle && !latestCycle.endDate);
 
-  const fertileWindowDays = (() => {
-    if (
-      !prediction?.fertileWindowStart ||
-      !prediction?.fertileWindowEnd ||
-      !latestCycle?.startDate
-    ) {
-      return { fertileStartDay: undefined, fertileEndDay: undefined };
-    }
-    const cycleStart = parseISO(latestCycle.startDate);
-    return {
-      fertileStartDay:
-        differenceInCalendarDays(parseISO(prediction.fertileWindowStart), cycleStart) + 1,
-      fertileEndDay:
-        differenceInCalendarDays(parseISO(prediction.fertileWindowEnd), cycleStart) + 1,
-    };
-  })();
-
   return (
     <div className="p-4 max-w-lg mx-auto pb-8">
       {/* Kopfzeile */}
@@ -105,52 +86,28 @@ export function Dashboard() {
         prediction={prediction}
         currentCycleDay={currentCycleDay}
         isPeriodActive={isPeriodActive}
+        uncertaintyDays={modelParams ? Math.max(1, Math.round(modelParams.stdCycleLength)) : undefined}
       />
 
       <QuickLog />
 
-      {/* Zyklus-Fortschritt */}
-      {prediction && currentCycleDay && (
-        <CycleProgress
-          currentDay={currentCycleDay}
-          cycleLength={prediction.expectedCycleLength}
-          periodLength={prediction.periodLength ?? 5}
-          fertileStart={fertileWindowDays.fertileStartDay}
-          fertileEnd={fertileWindowDays.fertileEndDay}
-        />
-      )}
-
       {/* Statistiken */}
       {modelParams && (
-        <div className="card mt-4">
-          <h3 className="font-semibold text-gray-800 mb-3">Zyklus-Statistiken</h3>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              {
-                label: 'Durchschnittlicher Zyklus',
-                value: `${Math.round(modelParams.avgCycleLength)} Tage`,
-              },
-              { label: 'Erfasste Zyklen', value: `${modelParams.cyclesTrained}` },
-              {
-                label: 'Abweichung',
-                value: `±${modelParams.stdCycleLength.toFixed(1)} Tage`,
-              },
-              {
-                label: 'Modell',
-                value: MODEL_TYPE_LABELS[modelParams.modelType] ?? modelParams.modelType,
-              },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                className="rounded-xl bg-sky-50/70 border border-sky-100 p-3"
-              >
-                <div className="text-xs text-gray-500">{stat.label}</div>
-                <div className="font-bold text-gray-800 capitalize mt-0.5">
-                  {stat.value}
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="grid grid-cols-3 gap-2 mt-4">
+          {[
+            { label: 'Ø Zyklus', value: `${Math.round(modelParams.avgCycleLength)} Tage` },
+            { label: 'Schwankung', value: `±${modelParams.stdCycleLength.toFixed(1)} Tage` },
+            { label: 'Zyklen erfasst', value: `${modelParams.cyclesTrained}` },
+          ].map((stat) => (
+            <button
+              key={stat.label}
+              onClick={() => navigate('/history')}
+              className="rounded-2xl bg-white border border-sky-100 shadow-sm px-3 py-3 text-left hover:border-sky-200"
+            >
+              <div className="text-[11px] text-gray-500">{stat.label}</div>
+              <div className="font-bold text-gray-800 mt-0.5 tabular-nums">{stat.value}</div>
+            </button>
+          ))}
         </div>
       )}
     </div>

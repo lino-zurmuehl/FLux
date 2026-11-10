@@ -17,6 +17,7 @@ import {
   Brain,
   AlertCircle,
   FileText,
+  ChevronDown,
 } from 'lucide-react';
 import {
   addLog,
@@ -116,7 +117,7 @@ const DISTURBER_EMOJI: Record<Disturber, string> = {
 
 // Wiederverwendbare Stile
 const chipBase =
-  'px-3 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5';
+  'px-3 min-h-[40px] rounded-full text-sm font-medium transition-all flex items-center gap-1.5 active:scale-95';
 const chipIdle = 'bg-sky-50 text-gray-700 hover:bg-sky-100 border border-sky-100';
 
 interface SectionProps {
@@ -166,6 +167,8 @@ export function LogEntry() {
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Seltener genutzte Felder bleiben eingeklappt, bis sie gebraucht werden.
+  const [showMore, setShowMore] = useState(false);
   const { refreshData } = useApp();
 
   const dateString = format(selectedDate, 'yyyy-MM-dd');
@@ -184,6 +187,7 @@ export function LogEntry() {
         setDisturbers(log.disturbers || []);
         setTemperature(log.temperature?.toString() ?? '');
         setNotes(log.notes ?? '');
+        setShowMore(Boolean(log.fluid || log.sexDrive || log.disturbers?.length || log.temperature));
       } else {
         // Formular für neues Datum zurücksetzen
         setFlow(undefined);
@@ -194,6 +198,7 @@ export function LogEntry() {
         setDisturbers([]);
         setTemperature('');
         setNotes('');
+        setShowMore(false);
       }
       setSaved(false);
     }
@@ -286,13 +291,17 @@ export function LogEntry() {
     }
   };
 
+  const moreCount =
+    (fluid ? 1 : 0) + (sexDrive ? 1 : 0) + disturbers.length + (temperature ? 1 : 0);
+
   return (
     <div className="p-4 max-w-lg mx-auto pb-36">
       {/* Datumsauswahl */}
       <div className="card p-3 mb-5 flex items-center justify-between">
         <button
           onClick={() => navigateDate(-1)}
-          className="p-2 rounded-full hover:bg-sky-100 text-gray-600"
+          aria-label="Vorheriger Tag"
+          className="p-2.5 rounded-full hover:bg-sky-100 text-gray-600"
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
@@ -307,7 +316,8 @@ export function LogEntry() {
         <button
           onClick={() => navigateDate(1)}
           disabled={isToday}
-          className="p-2 rounded-full hover:bg-sky-100 text-gray-600 disabled:opacity-30"
+          aria-label="Nächster Tag"
+          className="p-2.5 rounded-full hover:bg-sky-100 text-gray-600 disabled:opacity-30"
         >
           <ChevronRight className="w-6 h-6" />
         </button>
@@ -324,6 +334,7 @@ export function LogEntry() {
           {FLOW_INTENSITIES.map((option) => (
             <button
               key={option.value}
+              aria-pressed={flow === option.value}
               onClick={() => {
                 setFlow(flow === option.value ? undefined : option.value);
                 setSaved(false);
@@ -356,6 +367,7 @@ export function LogEntry() {
           {SYMPTOMS.map((symptom) => (
             <button
               key={symptom}
+              aria-pressed={symptoms.includes(symptom)}
               onClick={() => toggleSymptom(symptom)}
               className={`${chipBase} ${
                 symptoms.includes(symptom)
@@ -381,6 +393,7 @@ export function LogEntry() {
           {MOODS.map((m) => (
             <button
               key={m}
+              aria-pressed={mood === m}
               onClick={() => {
                 setMood(mood === m ? undefined : m);
                 setSaved(false);
@@ -396,6 +409,42 @@ export function LogEntry() {
         </div>
       </Section>
 
+      {/* Notizen */}
+      <Section
+        icon={FileText}
+        iconClass="text-gray-500"
+        iconBg="bg-sky-50"
+        title="Notizen"
+      >
+        <textarea
+          placeholder="Zusätzliche Notizen..."
+          value={notes}
+          onChange={(e) => {
+            setNotes(e.target.value);
+            setSaved(false);
+          }}
+          className="input min-h-[100px] resize-none"
+        />
+      </Section>
+
+      {/* Weitere Angaben (eingeklappt) */}
+      <button
+        onClick={() => setShowMore(!showMore)}
+        aria-expanded={showMore}
+        className="w-full card mb-4 px-5 py-4 flex items-center justify-between text-left"
+      >
+        <span>
+          <span className="block font-semibold text-gray-800">Weitere Angaben</span>
+          <span className="block text-xs text-gray-500">
+            Zervixschleim, Libido, Störfaktoren, Basaltemperatur
+            {moreCount > 0 && ` · ${moreCount} ausgewählt`}
+          </span>
+        </span>
+        <ChevronDown className={`w-5 h-5 text-gray-500 transition-transform ${showMore ? 'rotate-180' : ''}`} />
+      </button>
+
+      {showMore && (
+        <>
       {/* Zervixschleim */}
       <Section
         icon={Droplet}
@@ -407,6 +456,7 @@ export function LogEntry() {
           {FLUIDS.map((f) => (
             <button
               key={f}
+              aria-pressed={fluid === f}
               onClick={() => {
                 setFluid(fluid === f ? undefined : f);
                 setSaved(false);
@@ -433,6 +483,7 @@ export function LogEntry() {
           {SEX_DRIVES.map((sd) => (
             <button
               key={sd}
+              aria-pressed={sexDrive === sd}
               onClick={() => {
                 setSexDrive(sexDrive === sd ? undefined : sd);
                 setSaved(false);
@@ -460,6 +511,7 @@ export function LogEntry() {
           {DISTURBERS.map((d) => (
             <button
               key={d}
+              aria-pressed={disturbers.includes(d)}
               onClick={() => toggleDisturber(d)}
               className={`${chipBase} ${
                 disturbers.includes(d) ? 'bg-primary-400 text-white shadow-sm' : chipIdle
@@ -485,6 +537,7 @@ export function LogEntry() {
             step="0.01"
             min="35"
             max="40"
+            inputMode="decimal"
             placeholder="36,50"
             value={temperature}
             onChange={(e) => {
@@ -497,26 +550,11 @@ export function LogEntry() {
         </div>
       </Section>
 
-      {/* Notizen */}
-      <Section
-        icon={FileText}
-        iconClass="text-gray-500"
-        iconBg="bg-sky-50"
-        title="Notizen"
-      >
-        <textarea
-          placeholder="Zusätzliche Notizen..."
-          value={notes}
-          onChange={(e) => {
-            setNotes(e.target.value);
-            setSaved(false);
-          }}
-          className="input min-h-[100px] resize-none"
-        />
-      </Section>
+        </>
+      )}
 
       {/* Schwebender Speichern-Button */}
-      <div className="fixed bottom-20 left-0 right-0 px-4 pointer-events-none">
+      <div className="fixed left-0 right-0 px-4 pointer-events-none" style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
         <div className="max-w-lg mx-auto">
           <button
             onClick={handleSave}

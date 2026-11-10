@@ -5,12 +5,29 @@
 @layer base {
   body {
     @apply bg-sky-50 text-gray-900 antialiased;
+    /* Kein grauer Tap-Blitz und kein Gummiband-Scrollen wie auf einer Webseite */
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+
+  /* Sichtbarer Fokus nur bei Tastaturbedienung */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary-500 ring-offset-2;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
   }
 }
 
 @layer components {
   .btn {
-    @apply px-5 py-2.5 rounded-full font-semibold transition-colors duration-200;
+    @apply px-5 py-2.5 min-h-[44px] rounded-full font-semibold transition-colors duration-200 disabled:opacity-50;
   }
 
   .btn-primary {
@@ -39,6 +56,14 @@
 }
 
 @layer utilities {
+  /* Abstand für die iPhone-Home-Leiste (braucht viewport-fit=cover) */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
   /* Horizontale Karten-Reihen ohne sichtbare Scrollbar */
   .no-scrollbar {
     -ms-overflow-style: none;

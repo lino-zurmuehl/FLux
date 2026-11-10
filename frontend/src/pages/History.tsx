@@ -183,6 +183,42 @@ export function History() {
         </p>
       </header>
 
+      {/* Zykluslängen im Überblick */}
+      {(() => {
+        const bars = cycleRows.filter((row) => row.length).slice(-12);
+        if (bars.length < 2) return null;
+        const lengths = bars.map((row) => row.length as number);
+        const min = Math.min(...lengths);
+        const max = Math.max(...lengths);
+        const floor = min - 4;
+        return (
+          <div className="card mb-4 p-5">
+            <div className="flex items-baseline justify-between mb-4">
+              <h3 className="font-semibold text-gray-800">Zykluslängen</h3>
+              <span className="text-xs text-gray-500">
+                {min === max ? `${min} Tage` : `${min}–${max} Tage`}
+                {avgLength ? ` · Ø ${avgLength.toFixed(1)}` : ''}
+              </span>
+            </div>
+            <div className="flex items-end gap-1.5 h-28" role="img" aria-label={`Zykluslängen der letzten ${bars.length} Zyklen: ${lengths.join(', ')} Tage`}>
+              {bars.map(({ cycle, length }) => {
+                const outlier = avgLength ? Math.abs((length as number) - avgLength) > 2 : false;
+                return (
+                  <div key={cycle.startDate} className="flex-1 flex flex-col items-center justify-end h-full gap-1">
+                    <span className="text-[11px] font-semibold text-gray-700 tabular-nums">{length}</span>
+                    <div
+                      className={`w-full max-w-[28px] rounded-t-lg ${outlier ? 'bg-amber-400' : 'bg-primary-400'}`}
+                      style={{ height: `${(((length as number) - floor) / (max - floor)) * 70}%` }}
+                    />
+                    <span className="text-[10px] text-gray-500">{format(parseISO(cycle.startDate), 'MMM', { locale: de }).replace('.', '')}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Vorhersage-Genauigkeit */}
       <div className="card mb-4">
         <div className="flex items-center gap-2 mb-3">
@@ -281,8 +317,8 @@ export function History() {
                       {cycle.autoEnded && ' · automatisch beendet'}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-right">
+                  <div className="flex items-center gap-1">
+                    <div className="text-right mr-1">
                       <div className="font-semibold text-gray-800">
                         {length ? `${length} Tage` : 'offen'}
                       </div>
@@ -296,10 +332,10 @@ export function History() {
                         </div>
                       )}
                     </div>
-                    <button onClick={() => navigate(`/calendar?edit=period&date=${cycle.startDate}`)} disabled={isMutating} className="p-2 text-primary-700 hover:bg-primary-50 rounded-lg" aria-label="Zyklus bearbeiten">
+                    <button onClick={() => navigate(`/calendar?edit=period&date=${cycle.startDate}`)} disabled={isMutating} className="w-10 h-10 flex items-center justify-center text-primary-700 hover:bg-primary-50 rounded-full" aria-label="Zyklus bearbeiten">
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button onClick={() => void deleteCycle(cycle)} disabled={isMutating} className="p-2 text-red-600 hover:bg-red-50 rounded-lg" aria-label="Zyklus löschen">
+                    <button onClick={() => void deleteCycle(cycle)} disabled={isMutating} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full" aria-label="Zyklus löschen">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>

@@ -98,6 +98,7 @@ export function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPin(!showPin)}
+                  aria-label={showPin ? 'PIN verbergen' : 'PIN anzeigen'}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showPin ? (
