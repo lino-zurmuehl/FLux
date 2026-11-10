@@ -12,6 +12,8 @@
 
 import type { Cycle, DailyLog, ModelParams, PredictionRecord } from './types';
 import { db, getDataset, persist, wipeAll } from './secureStore';
+import { automaticPeriodEnds, periodEndFor } from './periodDates';
+import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 
 // Re-export the Dexie instance for backwards compatibility.
 export { db };
@@ -97,6 +99,8 @@ export async function addCycle(cycle: Omit<Cycle, 'id'>): Promise<number> {
   const ds = getDataset();
   const id = ds.nextCycleId++;
   ds.cycles.push({ ...cycle, id });
+  const previous = sortedCycles().filter((item) => item.startDate < cycle.startDate).pop();
+  if (previous) previous.length = undefined;
   await persist();
   return id;
 }
@@ -125,6 +129,55 @@ export async function updateCycle(
     if (editedIndex > 0) sorted[editedIndex - 1].length = undefined;
   }
   await persist();
+}
+
+/** Calendar edits persist dates, interval invalidation and accuracy together. */
+export async function savePeriodDates(startDate: string, endDate?: string, id?: number): Promise<void> {
+  const ds = getDataset();
+  const existing = id === undefined ? undefined : ds.cycles.find((cycle) => cycle.id === id);
+  if (id !== undefined && !existing) throw new Error('Period not found');
+  const oldStart = existing?.startDate;
+  const oldEnd = existing ? periodEndFor(existing, format(new Date(), 'yyyy-MM-dd')) : undefined;
+  const record: Cycle = {
+    ...existing,
+    id: id ?? ds.nextCycleId++,
+    startDate,
+    endDate,
+    periodLength: endDate ? differenceInCalendarDays(parseISO(endDate), parseISO(startDate)) + 1 : undefined,
+    autoEnded: false,
+    length: undefined,
+  };
+  if (existing) ds.cycles[ds.cycles.indexOf(existing)] = record;
+  else ds.cycles.push(record);
+  // Both neighbours can change when a missing historical period is inserted/moved.
+  for (const cycle of ds.cycles) cycle.length = undefined;
+  if (oldStart && oldStart !== startDate) {
+    const outcome = ds.predictionHistory.find((item) => item.cycleStartDate === oldStart);
+    if (outcome) {
+      outcome.cycleStartDate = startDate;
+      outcome.errorDays = differenceInCalendarDays(parseISO(startDate), parseISO(outcome.predictedDate));
+    }
+  }
+  // Diary observations stay on their actual dates. Only period membership changes.
+  if (oldStart && oldEnd) {
+    ds.logs = ds.logs.map((log) => log.date >= oldStart && log.date <= oldEnd
+      ? { ...log, isPeriod: ds.cycles.some((cycle) => log.date >= cycle.startDate && log.date <= periodEndFor(cycle, format(new Date(), 'yyyy-MM-dd'))) }
+      : log);
+  }
+  await persist();
+}
+
+/** Runs after unlock, on resume and while the unlocked app remains open. */
+export async function autoEndPeriods(today = format(new Date(), 'yyyy-MM-dd')): Promise<boolean> {
+  const ds = getDataset();
+  const updates = automaticPeriodEnds(ds.cycles, today);
+  if (!updates.length) return false;
+  for (const updated of updates) {
+    const index = ds.cycles.findIndex((cycle) => cycle.id === updated.id);
+    if (index >= 0) ds.cycles[index] = updated;
+  }
+  await persist();
+  return true;
 }
 
 /**

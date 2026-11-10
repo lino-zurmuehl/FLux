@@ -186,6 +186,7 @@ class FloParser:
                 end_date=end,
                 length=length,
                 period_length=period_length,
+                auto_ended=period.get("auto_ended", period.get("autoEnded", False)),
             )
             cycles.append(cycle)
 

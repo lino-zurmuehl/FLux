@@ -119,7 +119,11 @@ class CyclePredictor:
         self._avg_cycle_length = mean(self._valid_lengths)
         self._std_cycle_length = pstdev(self._valid_lengths) if len(self._valid_lengths) > 1 else 0.0
 
-        period_lengths = [c.period_length for c in self._cycles if c.period_length]
+        period_lengths = [
+            c.period_length
+            for c in self._cycles
+            if c.period_length and not c.auto_ended
+        ]
         self._avg_period_length = mean(period_lengths) if period_lengths else None
         self._trend = self._compute_trend(self._valid_lengths)
 

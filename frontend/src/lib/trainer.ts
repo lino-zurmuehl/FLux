@@ -223,6 +223,7 @@ export function trainModel(cycles: Cycle[]): ModelParams | null {
   const confidence = computeConfidence(validLengths);
 
   const periodLengths = sorted
+    .filter((c) => !c.autoEnded)
     .map((c) => c.periodLength)
     .filter((p): p is number => Boolean(p));
   const avgPeriodLength = periodLengths.length > 0 ? mean(periodLengths) : undefined;

@@ -7,6 +7,8 @@ import {
   useContext,
   useState,
   useEffect,
+  useCallback,
+  useRef,
   type ReactNode,
 } from 'react';
 import {
@@ -14,6 +16,7 @@ import {
   hasData,
   getCurrentCycleDay,
   getLatestCycle,
+  autoEndPeriods,
 } from '../lib/db';
 import type { ModelParams, Cycle } from '../lib/types';
 
@@ -23,6 +26,7 @@ interface AppState {
   modelParams: ModelParams | null;
   currentCycleDay: number | null;
   latestCycle: Cycle | null;
+  dataVersion: number;
   refreshData: () => Promise<void>;
 }
 
@@ -34,30 +38,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [modelParams, setModelParams] = useState<ModelParams | null>(null);
   const [currentCycleDay, setCurrentCycleDay] = useState<number | null>(null);
   const [latestCycle, setLatestCycle] = useState<Cycle | null>(null);
+  const [dataVersion, setDataVersion] = useState(0);
+  const refreshInFlight = useRef<Promise<void> | null>(null);
 
-  const refreshData = async () => {
-    try {
-      const [hasDataResult, params, cycleDay, latest] = await Promise.all([
-        hasData(),
-        getModelParams(),
-        getCurrentCycleDay(),
-        getLatestCycle(),
-      ]);
+  const refreshData = useCallback((): Promise<void> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const load = async () => {
+      try {
+        await autoEndPeriods();
+        const [hasDataResult, params, cycleDay, latest] = await Promise.all([
+          hasData(),
+          getModelParams(),
+          getCurrentCycleDay(),
+          getLatestCycle(),
+        ]);
 
-      setHasSetup(hasDataResult);
-      setModelParams(params);
-      setCurrentCycleDay(cycleDay);
-      setLatestCycle(latest ?? null);
-    } catch (error) {
-      console.error('Failed to load app data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        setHasSetup(hasDataResult);
+        setModelParams(params);
+        setCurrentCycleDay(cycleDay);
+        setLatestCycle(latest ?? null);
+        setDataVersion((version) => version + 1);
+      } catch (error) {
+        console.error('Failed to load app data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    refreshInFlight.current = load().finally(() => { refreshInFlight.current = null; });
+    return refreshInFlight.current;
+  }, []);
 
   useEffect(() => {
-    refreshData();
-  }, []);
+    void refreshData();
+    const onResume = () => {
+      if (document.visibilityState === 'visible') void refreshData();
+    };
+    const timer = window.setInterval(onResume, 60_000);
+    document.addEventListener('visibilitychange', onResume);
+    window.addEventListener('focus', onResume);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onResume);
+      window.removeEventListener('focus', onResume);
+    };
+  }, [refreshData]);
 
   return (
     <AppContext.Provider
@@ -67,6 +91,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         modelParams,
         currentCycleDay,
         latestCycle,
+        dataVersion,
         refreshData,
       }}
     >

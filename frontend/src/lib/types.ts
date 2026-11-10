@@ -131,6 +131,7 @@ export interface Cycle {
   endDate?: string; // End of period bleeding
   length?: number; // Days until next cycle start
   periodLength?: number; // Days of bleeding
+  autoEnded?: boolean; // End date assumed automatically; user can correct it
 }
 
 /**

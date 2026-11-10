@@ -32,7 +32,7 @@ export function Dashboard() {
         <div className="text-center py-12">
           <h1 className="text-3xl font-bold text-primary-700 mb-2">FLux</h1>
           <p className="text-gray-600 mb-8">
-            Datenschutzfreundliche Periodentracking mit ML-Vorhersagen
+            Datenschutzfreundliches Periodentracking mit ML-Vorhersagen
           </p>
 
           <div className="card mb-6">
@@ -50,7 +50,8 @@ export function Dashboard() {
             </button>
           </div>
 
-          <p className="text-sm text-gray-500">
+          <QuickLog />
+          <p className="text-sm text-gray-500 mt-4">
             Deine Daten bleiben auf diesem Gerät und werden verschlüsselt.
           </p>
         </div>
@@ -90,6 +91,7 @@ export function Dashboard() {
           onClick={() => navigate('/calendar')}
           className="p-2 rounded-full hover:bg-sky-100 text-primary-700"
           title="Kalender öffnen"
+          aria-label="Kalender öffnen"
         >
           <CalendarDays className="w-5 h-5" />
         </button>
@@ -105,6 +107,8 @@ export function Dashboard() {
         isPeriodActive={isPeriodActive}
       />
 
+      <QuickLog />
+
       {/* Zyklus-Fortschritt */}
       {prediction && currentCycleDay && (
         <CycleProgress
@@ -115,9 +119,6 @@ export function Dashboard() {
           fertileEnd={fertileWindowDays.fertileEndDay}
         />
       )}
-
-      {/* Schnellaktionen */}
-      <QuickLog />
 
       {/* Statistiken */}
       {modelParams && (

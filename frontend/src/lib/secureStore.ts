@@ -62,6 +62,8 @@ export const db = new FluxDatabase();
 // In-memory session state - never persisted.
 let currentKey: CryptoKey | null = null;
 let currentDataset: Dataset | null = null;
+// Preserve call order even when encryption of older/larger snapshots is slower.
+let pendingWrite: Promise<void> = Promise.resolve();
 
 function toBase64(buf: ArrayBuffer | Uint8Array): string {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
@@ -157,11 +159,18 @@ export async function persist(): Promise<void> {
   if (!currentKey || !currentDataset) {
     throw new Error('Secure store is locked - unlock with the PIN first.');
   }
-  const { iv, ciphertext } = await encrypt(JSON.stringify(currentDataset), currentKey);
-  await db.settings.put({
-    key: ENC_DATA_KEY,
-    value: JSON.stringify({ iv: toBase64(iv), data: toBase64(ciphertext) }),
+  const snapshot = JSON.stringify(currentDataset);
+  const key = currentKey;
+  const write = pendingWrite.then(async () => {
+    const { iv, ciphertext } = await encrypt(snapshot, key);
+    await db.settings.put({
+      key: ENC_DATA_KEY,
+      value: JSON.stringify({ iv: toBase64(iv), data: toBase64(ciphertext) }),
+    });
   });
+  // A failed write is still reported to its caller, but doesn't poison the queue.
+  pendingWrite = write.catch(() => {});
+  await write;
 }
 
 /** Drop the key and decrypted data from memory (app lock). */
@@ -233,10 +242,11 @@ export async function unlock(pin: string): Promise<boolean> {
 
 /** Delete ALL data (encrypted blob, salt, legacy tables) and lock. */
 export async function wipeAll(): Promise<void> {
+  lock();
+  await pendingWrite;
   await db.cycles.clear();
   await db.logs.clear();
   await db.settings.clear();
-  lock();
 }
 
 /** Create a fresh empty dataset (used indirectly by tests/setup). */

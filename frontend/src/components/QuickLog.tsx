@@ -1,379 +1,67 @@
-/**
- * Schnellaktionen zum Erfassen des Periodenstarts/-endes,
- * plus Korrektur von Start- und Enddatum.
- */
-
-import { useEffect, useState } from 'react';
-import { Droplet, CheckCircle2, Calendar, X, Pencil } from 'lucide-react';
-import { format, differenceInCalendarDays, subDays } from 'date-fns';
+/** Primary home action: period start/end, with corrections in the calendar. */
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Droplet, CheckCircle2, CalendarDays, Pencil } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
-import {
-  deleteCycle,
-  getAllCycles,
-  getLatestCycle as getLatestCycleFromDb,
-  removePredictionRecord,
-  restoreModelParamsBackup,
-  updateCycle,
-  updatePredictionForNewCycle,
-  updatePredictionRecordStartDate,
-} from '../lib/db';
-import { startPeriod, endPeriod, maybeAutoRetrain } from '../lib/periodActions';
+import { startPeriod, endPeriod } from '../lib/periodActions';
 import { useApp } from '../contexts/AppContext';
 
 export function QuickLog() {
-  const [isLogging, setIsLogging] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showCorrection, setShowCorrection] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [correctedStartDate, setCorrectedStartDate] = useState('');
-  const [correctedEndDate, setCorrectedEndDate] = useState('');
-  const [isCorrecting, setIsCorrecting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
   const { refreshData, latestCycle } = useApp();
+  const navigate = useNavigate();
+  const active = Boolean(latestCycle && !latestCycle.endDate);
+  const openCalendar = () => navigate(`/calendar?edit=period&date=${latestCycle?.startDate ?? format(new Date(), 'yyyy-MM-dd')}`);
 
-  // Period is active until the latest cycle gets an end date.
-  const isPeriodActive = latestCycle && !latestCycle.endDate;
-
-  useEffect(() => {
-    if (latestCycle?.startDate) {
-      setCorrectedStartDate(latestCycle.startDate);
-      setCorrectedEndDate(latestCycle.endDate ?? format(new Date(), 'yyyy-MM-dd'));
-    } else {
-      setCorrectedStartDate('');
-      setCorrectedEndDate('');
-    }
-  }, [latestCycle?.id, latestCycle?.startDate, latestCycle?.endDate]);
-
-  const submitDate = async (date: string) => {
-    setIsLogging(true);
+  const handleAction = async () => {
+    setIsSaving(true);
+    setError('');
     try {
-      const result = isPeriodActive
-        ? await endPeriod(date, latestCycle)
-        : await startPeriod(date, latestCycle);
-
-      if (!result.ok && result.error) {
-        alert(result.error);
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const result = active ? await endPeriod(today, latestCycle) : await startPeriod(today, latestCycle);
+      if (!result.ok) {
+        setError(result.error ?? 'Die Periode konnte nicht gespeichert werden.');
         return;
       }
       await refreshData();
-      setShowDatePicker(false);
-    } catch (error) {
-      console.error('Fehler beim Erfassen:', error);
+    } catch {
+      setError('Die Periode konnte nicht gespeichert werden. Bitte versuche es erneut.');
     } finally {
-      setIsLogging(false);
+      setIsSaving(false);
     }
   };
-
-  const handleQuickAction = () => submitDate(format(new Date(), 'yyyy-MM-dd'));
-  const handleDateSubmit = () => submitDate(selectedDate);
-
-  const handleCorrectStartDate = async () => {
-    if (!latestCycle?.id || !correctedStartDate) return;
-
-    setIsCorrecting(true);
-    try {
-      const allCycles = await getAllCycles();
-      const index = allCycles.findIndex((c) => c.id === latestCycle.id);
-      const previousCycle = index > 0 ? allCycles[index - 1] : undefined;
-
-      if (previousCycle && correctedStartDate <= previousCycle.startDate) {
-        alert('Startdatum muss nach dem vorherigen Zyklusstart liegen.');
-        return;
-      }
-      if (latestCycle.endDate && correctedStartDate > latestCycle.endDate) {
-        alert('Startdatum kann nicht nach dem Enddatum liegen.');
-        return;
-      }
-
-      const oldStartDate = latestCycle.startDate;
-      const updates: { startDate: string; periodLength?: number } = { startDate: correctedStartDate };
-      if (latestCycle.endDate) {
-        updates.periodLength =
-          differenceInCalendarDays(new Date(latestCycle.endDate), new Date(correctedStartDate)) + 1;
-      }
-
-      await updateCycle(latestCycle.id, updates);
-      await updatePredictionRecordStartDate(oldStartDate, correctedStartDate);
-      const retrained = await maybeAutoRetrain();
-      if (!retrained) {
-        await updatePredictionForNewCycle(correctedStartDate);
-      }
-      await refreshData();
-    } catch (error) {
-      console.error('Korrektur fehlgeschlagen:', error);
-    } finally {
-      setIsCorrecting(false);
-    }
-  };
-
-  const handleCorrectEndDate = async () => {
-    if (!latestCycle?.id || !correctedEndDate) return;
-    if (correctedEndDate < latestCycle.startDate) {
-      alert('Enddatum kann nicht vor dem Startdatum liegen.');
-      return;
-    }
-
-    setIsCorrecting(true);
-    try {
-      const periodLength =
-        differenceInCalendarDays(new Date(correctedEndDate), new Date(latestCycle.startDate)) + 1;
-
-      await updateCycle(latestCycle.id, {
-        endDate: correctedEndDate,
-        periodLength,
-      });
-      await maybeAutoRetrain();
-      await refreshData();
-    } catch (error) {
-      console.error('Korrektur fehlgeschlagen:', error);
-    } finally {
-      setIsCorrecting(false);
-    }
-  };
-
-  const handleUndoEndDate = async () => {
-    if (!latestCycle?.id || !latestCycle.endDate) return;
-
-    setIsCorrecting(true);
-    try {
-      await updateCycle(latestCycle.id, {
-        endDate: undefined,
-        periodLength: undefined,
-      });
-      await maybeAutoRetrain();
-      await refreshData();
-    } catch (error) {
-      console.error('Rückgängig fehlgeschlagen:', error);
-    } finally {
-      setIsCorrecting(false);
-    }
-  };
-
-  const handleUndoStart = async () => {
-    if (!latestCycle?.id) return;
-
-    setIsCorrecting(true);
-    try {
-      await removePredictionRecord(latestCycle.startDate);
-      await deleteCycle(latestCycle.id);
-      const latestRemainingCycle = await getLatestCycleFromDb();
-
-      if (latestRemainingCycle?.startDate) {
-        const retrained = await maybeAutoRetrain();
-        if (!retrained) {
-          await updatePredictionForNewCycle(latestRemainingCycle.startDate);
-        }
-      } else {
-        await restoreModelParamsBackup();
-      }
-      await refreshData();
-    } catch (error) {
-      console.error('Rückgängig fehlgeschlagen:', error);
-    } finally {
-      setIsCorrecting(false);
-    }
-  };
-
-  // Generate last 14 days for quick selection
-  const recentDays = Array.from({ length: 14 }, (_, i) => {
-    const date = subDays(new Date(), i);
-    return {
-      value: format(date, 'yyyy-MM-dd'),
-      label: i === 0 ? 'Heute' : i === 1 ? 'Gestern' : format(date, 'd. MMM', { locale: de }),
-      dayOfWeek: format(date, 'EEE', { locale: de }),
-    };
-  });
 
   return (
-    <div className="card mt-4">
-      <h3 className="font-semibold text-gray-800 mb-3">Schnellaktionen</h3>
-
-      <div className="flex gap-3">
-        {isPeriodActive ? (
-          <button
-            onClick={handleQuickAction}
-            disabled={isLogging}
-            className="flex-1 btn bg-sky-100 text-sky-700 hover:bg-sky-200 flex items-center justify-center gap-2"
-          >
-            <CheckCircle2 className="w-5 h-5" />
-            <span>{isLogging ? 'Erfasse...' : 'Periode beendet'}</span>
-          </button>
-        ) : (
-          <button
-            onClick={handleQuickAction}
-            disabled={isLogging}
-            className="flex-1 btn bg-primary-100 text-primary-700 hover:bg-primary-200 flex items-center justify-center gap-2"
-          >
-            <Droplet className="w-5 h-5" />
-            <span>{isLogging ? 'Erfasse...' : 'Periode gestartet'}</span>
-          </button>
+    <section className="card mt-4" aria-label="Periode erfassen">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold text-gray-800">Deine Periode</h2>
+        {latestCycle && (
+          <span className="text-xs text-gray-500">
+            {active ? `Seit ${format(parseISO(latestCycle.startDate), 'd. MMM', { locale: de })}` : 'Beendet'}
+          </span>
         )}
-
-        <button
-          onClick={() => {
-            setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
-            setShowDatePicker(!showDatePicker);
-          }}
-          className="btn bg-gray-100 text-gray-700 hover:bg-gray-200 px-3"
-          title="Anderes Datum wählen"
-        >
-          <Calendar className="w-5 h-5" />
+      </div>
+      <button onClick={() => void handleAction()} disabled={isSaving} className="w-full btn btn-primary flex items-center justify-center gap-2 py-3">
+        {active ? <CheckCircle2 className="w-5 h-5" /> : <Droplet className="w-5 h-5" />}
+        {isSaving ? 'Speichern…' : active ? 'Periode heute beenden' : 'Periode heute starten'}
+      </button>
+      {error && <p role="alert" className="text-sm text-red-600 mt-3">{error}</p>}
+      <button onClick={openCalendar} disabled={isSaving} className="w-full flex items-center justify-center gap-2 text-sm text-primary-700 py-3 mt-1 rounded-xl hover:bg-primary-50">
+        <CalendarDays className="w-4 h-4" />
+        {latestCycle ? 'Daten im Kalender korrigieren' : 'Vergangene Periode nachtragen'}
+      </button>
+      <p className="text-xs text-gray-500">
+        {latestCycle?.autoEnded
+          ? `Automatisch am ${format(parseISO(latestCycle.endDate!), 'd. MMM', { locale: de })} beendet. Du kannst das Datum im Kalender ändern.`
+          : 'Ohne manuelles Ende wird die Periode nach 5 Tagen automatisch beendet. Der Starttag zählt mit.'}
+      </p>
+      <div className="border-t border-sky-100 mt-4 pt-3">
+        <button onClick={() => navigate('/log')} className="flex items-center gap-2 text-sm text-gray-500 hover:text-primary-700 py-1">
+          <Pencil className="w-4 h-4" /> Symptome oder Notizen erfassen
         </button>
       </div>
-
-      {/* Date Picker Overlay */}
-      {showDatePicker && (
-        <div className="mt-4 p-4 bg-sky-50 rounded-2xl border border-sky-100">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-medium text-gray-700">
-              {isPeriodActive ? 'Wann endete die Periode?' : 'Wann startete die Periode?'}
-            </h4>
-            <button
-              onClick={() => setShowDatePicker(false)}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Quick date buttons */}
-          <div className="grid grid-cols-7 gap-1 mb-3">
-            {recentDays.slice(0, 7).map((day) => (
-              <button
-                key={day.value}
-                onClick={() => setSelectedDate(day.value)}
-                className={`p-2 text-center rounded-xl text-sm transition-colors ${
-                  selectedDate === day.value
-                    ? 'bg-primary-600 text-white shadow-sm'
-                    : 'bg-white hover:bg-primary-100'
-                }`}
-              >
-                <div className="text-xs opacity-75">{day.dayOfWeek}</div>
-                <div className="font-medium">{day.label.split(' ')[0]}</div>
-              </button>
-            ))}
-          </div>
-
-          {/* Show more days */}
-          <details className="mb-3">
-            <summary className="text-sm text-primary-600 cursor-pointer hover:underline">
-              Weitere Tage anzeigen
-            </summary>
-            <div className="grid grid-cols-7 gap-1 mt-2">
-              {recentDays.slice(7).map((day) => (
-                <button
-                  key={day.value}
-                  onClick={() => setSelectedDate(day.value)}
-                  className={`p-2 text-center rounded-xl text-sm transition-colors ${
-                    selectedDate === day.value
-                      ? 'bg-primary-600 text-white shadow-sm'
-                      : 'bg-white hover:bg-primary-100'
-                  }`}
-                >
-                  <div className="text-xs opacity-75">{day.dayOfWeek}</div>
-                  <div className="font-medium">{day.label.split(' ')[0]}</div>
-                </button>
-              ))}
-            </div>
-          </details>
-
-          {/* Manual date input */}
-          <div className="flex gap-2">
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              max={format(new Date(), 'yyyy-MM-dd')}
-              className="flex-1 input text-sm"
-            />
-            <button
-              onClick={handleDateSubmit}
-              disabled={isLogging}
-              className="btn btn-primary"
-            >
-              {isLogging ? 'Erfasse...' : 'Speichern'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Correction panel for accidental clicks */}
-      {latestCycle && (
-        <div className="mt-4 p-4 bg-white rounded-2xl border border-sky-100">
-          <button
-            onClick={() => setShowCorrection((v) => !v)}
-            className="w-full flex items-center justify-center gap-2 text-primary-700 font-medium"
-          >
-            <Pencil className="w-4 h-4" />
-            {showCorrection ? 'Korrektur schließen' : 'Start/Ende korrigieren'}
-          </button>
-
-          {showCorrection && (
-            <div className="mt-3 space-y-3 text-sm">
-              <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
-                <div>
-                  <label className="label mb-1">Startdatum korrigieren</label>
-                  <input
-                    type="date"
-                    value={correctedStartDate}
-                    onChange={(e) => setCorrectedStartDate(e.target.value)}
-                    max={format(new Date(), 'yyyy-MM-dd')}
-                    className="input text-sm"
-                  />
-                </div>
-                <button
-                  onClick={handleCorrectStartDate}
-                  disabled={isCorrecting || !correctedStartDate}
-                  className="btn btn-secondary"
-                >
-                  Speichern
-                </button>
-              </div>
-
-              <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
-                <div>
-                  <label className="label mb-1">Enddatum korrigieren</label>
-                  <input
-                    type="date"
-                    value={correctedEndDate}
-                    onChange={(e) => setCorrectedEndDate(e.target.value)}
-                    min={latestCycle.startDate}
-                    max={format(new Date(), 'yyyy-MM-dd')}
-                    className="input text-sm"
-                  />
-                </div>
-                <button
-                  onClick={handleCorrectEndDate}
-                  disabled={isCorrecting || !correctedEndDate}
-                  className="btn btn-secondary"
-                >
-                  Speichern
-                </button>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={handleUndoEndDate}
-                  disabled={isCorrecting || !latestCycle.endDate}
-                  className="btn bg-sky-100 text-sky-700 hover:bg-sky-200 flex-1"
-                >
-                  Ende rückgängig
-                </button>
-                <button
-                  onClick={handleUndoStart}
-                  disabled={isCorrecting || !!latestCycle.endDate}
-                  className="btn bg-red-100 text-red-700 hover:bg-red-200 flex-1"
-                >
-                  Start rückgängig
-                </button>
-              </div>
-
-              <p className="text-xs text-gray-500">
-                Start rückgängig ist nur möglich, solange noch kein Enddatum gesetzt wurde.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    </section>
   );
 }

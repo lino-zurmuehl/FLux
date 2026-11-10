@@ -251,6 +251,7 @@ export function Import() {
             endDate,
             length: cycleLength,
             periodLength,
+            autoEnded: period.autoEnded === true || period.auto_ended === true,
           });
         }
       }

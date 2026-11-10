@@ -6,6 +6,8 @@
 import { addDays, format, isSameDay, parseISO, subDays } from 'date-fns';
 import { de } from 'date-fns/locale';
 import type { Cycle, Prediction } from '../lib/types';
+import { useNavigate } from 'react-router-dom';
+import { periodEndFor } from '../lib/periodDates';
 
 interface Props {
   latestCycle: Cycle | null;
@@ -26,7 +28,7 @@ function classifyDay(
   // Tatsächliche Periode (laufende Periode reicht bis heute)
   if (latestCycle) {
     const start = latestCycle.startDate;
-    const end = latestCycle.endDate ?? todayIso;
+    const end = periodEndFor(latestCycle, todayIso);
     if (iso >= start && iso <= end) {
       return 'period';
     }
@@ -76,6 +78,7 @@ const DAY_STYLES: Record<DayKind, { idle: string; today: string }> = {
 };
 
 export function WeekStrip({ latestCycle, prediction }: Props) {
+  const navigate = useNavigate();
   const today = new Date();
   const days = Array.from({ length: 7 }, (_, i) => addDays(subDays(today, 3), i));
 
@@ -95,11 +98,13 @@ export function WeekStrip({ latestCycle, prediction }: Props) {
             >
               {format(date, 'EEEEEE', { locale: de })}
             </span>
-            <div
+            <button
+              onClick={() => navigate(`/calendar?date=${format(date, 'yyyy-MM-dd')}`)}
+              aria-label={`Kalender für ${format(date, 'd. MMMM', { locale: de })} öffnen`}
               className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${style}`}
             >
               {format(date, 'd')}
-            </div>
+            </button>
             <span className="h-3 text-[10px] font-semibold text-primary-700">
               {isToday ? 'Heute' : ''}
             </span>

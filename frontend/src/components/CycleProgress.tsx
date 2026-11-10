@@ -30,11 +30,11 @@ export function CycleProgress({
   const center = size / 2;
 
   // Calculate day ranges
-  // Fertile window: typically around ovulation (day 14 in a 28-day cycle)
-  // Default: 5 days before ovulation to 1 day after
-  const ovulationDay = clamp(Math.round(safeCycleLength - 14), 1, safeCycleLength); // ~14 days before next period
+  // Same six-day estimate as the model: five days before its estimated end.
+  // Cycle days count from 1; the next start is cycleLength days after this start.
+  const ovulationDay = clamp(Math.round(safeCycleLength - 14 + 1), 1, safeCycleLength);
   const defaultFertileStart = clamp(Math.max(safePeriodLength + 1, ovulationDay - 5), 1, safeCycleLength);
-  const defaultFertileEnd = clamp(Math.max(defaultFertileStart, ovulationDay + 1), defaultFertileStart, safeCycleLength);
+  const defaultFertileEnd = clamp(Math.max(defaultFertileStart, ovulationDay), defaultFertileStart, safeCycleLength);
 
   const fertileStartDay = fertileStart
     ? clamp(Math.round(fertileStart), 1, safeCycleLength)
@@ -78,7 +78,7 @@ export function CycleProgress({
     phaseColor = 'text-primary-600';
     cardPhaseClass = 'bg-gradient-to-br from-primary-100 via-primary-50 to-rose-100 border-primary-300';
   } else if (safeCurrentDay >= fertileStartDay && safeCurrentDay <= fertileEndDay) {
-    phase = 'Fruchtbar';
+    phase = 'Rund um den Eisprung';
     phaseColor = 'text-sky-600';
     cardPhaseClass = 'bg-gradient-to-br from-sky-100 via-sky-50 to-cyan-100 border-sky-300';
   } else if (safeCurrentDay > fertileEndDay) {
@@ -169,14 +169,14 @@ export function CycleProgress({
       </div>
 
       {/* Legende */}
-      <div className="flex justify-center gap-6 mt-4 text-xs">
+      <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 text-xs">
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 bg-primary-200 rounded-full" />
           <span className="text-gray-600">Periode ({safePeriodLength}T)</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 bg-sky-300 rounded-full" />
-          <span className="text-gray-600">Fruchtbar (T{fertileStartDay}-{fertileEndDay})</span>
+          <span className="text-gray-600">Rund um den Eisprung (T{fertileStartDay}–{fertileEndDay})</span>
         </div>
       </div>
     </div>

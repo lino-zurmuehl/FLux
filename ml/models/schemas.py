@@ -74,6 +74,7 @@ class Cycle:
     end_date: date | None = None
     length: int | None = None
     period_length: int | None = None
+    auto_ended: bool = False
 
     def __post_init__(self) -> None:
         parsed_start = _parse_date(self.start_date)
@@ -84,6 +85,7 @@ class Cycle:
         self.end_date = _parse_date(self.end_date)
         self.length = int(self.length) if self.length is not None else None
         self.period_length = int(self.period_length) if self.period_length is not None else None
+        self.auto_ended = bool(self.auto_ended)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -92,6 +94,7 @@ class Cycle:
             "end_date": self.end_date.isoformat() if self.end_date else None,
             "length": self.length,
             "period_length": self.period_length,
+            "auto_ended": self.auto_ended,
         }
 
 

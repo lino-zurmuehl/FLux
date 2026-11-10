@@ -66,7 +66,9 @@ def compute_cycle_features(cycles: list[Cycle]) -> dict:
     features["regularity_score"] = float(max(0, 1 - cv))
 
     # Period lengths if available
-    period_lengths = [c.period_length for c in sorted_cycles if c.period_length]
+    period_lengths = [
+        c.period_length for c in sorted_cycles if c.period_length and not c.auto_ended
+    ]
     if period_lengths:
         features["avg_period_length"] = float(np.mean(period_lengths))
 

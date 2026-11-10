@@ -49,10 +49,6 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
     ? normalizeToNoon(parseISO(prediction.fertileWindowEnd))
     : null;
 
-  // The ML pipeline defines the fertile window as ovulation-5 ... ovulation,
-  // so ovulation is the END of the window (not its midpoint).
-  const ovulationDate = fertileEndDate ? new Date(fertileEndDate) : null;
-
   const isFertilePhase = !isPeriodActive
     && fertileStartDate !== null
     && fertileEndDate !== null
@@ -71,15 +67,8 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
     statusMessage = `Tag ${currentCycleDay} der Periode`;
     statusColor = 'text-primary-700';
     cardBackgroundClass = 'bg-gradient-to-br from-primary-200 via-primary-100 to-rose-100 border-primary-300';
-  } else if (isFertilePhase && ovulationDate) {
-    const daysUntilOvulation = differenceInCalendarDays(ovulationDate, today);
-    if (daysUntilOvulation <= 0) {
-      statusMessage = 'Eisprung heute';
-    } else if (daysUntilOvulation === 1) {
-      statusMessage = 'Eisprung morgen';
-    } else {
-      statusMessage = `Eisprung in ${daysUntilOvulation} Tagen`;
-    }
+  } else if (isFertilePhase) {
+    statusMessage = 'Rund um den Eisprung';
     statusColor = 'text-sky-600';
     cardBackgroundClass = 'bg-gradient-to-br from-sky-100 via-sky-50 to-cyan-100 border-sky-300';
     headerAccentClass = 'text-sky-600';
@@ -107,7 +96,7 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
         <div className="flex items-center gap-3">
           <Calendar className={`w-6 h-6 ${headerAccentClass}`} />
           <h2 className="text-lg font-semibold text-primary-900">
-            Nächste Periode
+            {isFertilePhase ? 'Deine Zyklusphase' : 'Nächste Periode'}
           </h2>
         </div>
         {currentCycleDay && (
@@ -118,12 +107,18 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
       </div>
 
       <div className="text-center py-4">
-        <div className={`text-3xl font-bold ${statusColor} mb-1`}>
+        {isFertilePhase && <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-sky-700 mb-3">
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Aktuelles Zeitfenster
+        </span>}
+        <div className={`${isFertilePhase ? 'text-2xl' : 'text-3xl'} font-bold ${statusColor} mb-1`}>
           {statusMessage}
         </div>
         <div className={detailToneClass}>
-          {format(nextDate, 'EEEE, d. MMMM', { locale: de })}
+          {isFertilePhase && fertileStartDate && fertileEndDate
+            ? `${format(fertileStartDate, 'd. MMM', { locale: de })} – ${format(fertileEndDate, 'd. MMM', { locale: de })}`
+            : format(nextDate, 'EEEE, d. MMMM', { locale: de })}
         </div>
+        {isFertilePhase && <p className="text-xs text-sky-700 mt-2">Geschätzter Zeitraum · der genaue Zeitpunkt kann variieren.</p>}
       </div>
 
       <div className={`flex items-center justify-between text-sm pt-4 border-t ${detailBorderClass}`}>
@@ -136,9 +131,14 @@ export function PredictionCard({ prediction, currentCycleDay, isPeriodActive = f
         </span>
       </div>
 
-      {prediction.fertileWindowStart && prediction.fertileWindowEnd && (
+      {isFertilePhase ? (
         <div className={`mt-3 pt-3 border-t text-sm ${detailToneClass} ${detailBorderClass}`}>
-          <span className="font-medium">Fruchtbar:</span>{' '}
+          <span className="font-medium">Nächste Periode:</span>{' '}
+          {format(nextDate, 'd. MMM', { locale: de })}
+        </div>
+      ) : prediction.fertileWindowStart && prediction.fertileWindowEnd && (
+        <div className={`mt-3 pt-3 border-t text-sm ${detailToneClass} ${detailBorderClass}`}>
+          <span className="font-medium">Rund um den Eisprung:</span>{' '}
           {format(parseISO(prediction.fertileWindowStart), 'd. MMM', { locale: de })} bis{' '}
           {format(parseISO(prediction.fertileWindowEnd), 'd. MMM', { locale: de })}
         </div>
